@@ -1,0 +1,39 @@
+name: Lint, Build, and Test Chaingraph
+on: push
+
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_DB: chaingraph
+          POSTGRES_USER: chaingraph
+          POSTGRES_PASSWORD: very_insecure_postgres_password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v2
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '16'
+          cache: 'yarn'
+      - run: yarn install
+      - run: yarn test
+      - run: yarn cov:lcov
+      - uses: codecov/codecov-action@v2
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - uses: actions/upload-artifact@v2
+        if: always()
+        with:
+          name: e2e-test-log
+          path: data/chaingraph/log-e2e.ndjson

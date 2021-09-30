@@ -1,0 +1,9 @@
+table:
+  name: authchain_migrations_view
+  schema: public
+computed_fields:
+- definition:
+    function:
+      name: authchain_migration_transaction
+      schema: public
+  name: transaction

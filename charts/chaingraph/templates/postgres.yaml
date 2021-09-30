@@ -1,0 +1,83 @@
+{{- if not .Values.postgres.externalDbUrl }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  labels:
+    app: postgres
+    {{- include "chaingraph.labels" . | nindent 4 }}
+spec:
+  serviceName: "postgres-service"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+      {{- include "chaingraph.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: postgres
+        {{- include "chaingraph.selectorLabels" . | nindent 8 }}
+    spec:
+      volumes:
+      - name: postgres-dev-shm # https://stackoverflow.com/a/67144103/1326803
+        emptyDir:
+          medium: Memory
+      - name: postgres-initdb-scripts
+        configMap:
+          defaultMode: 0644
+          name: postgres-initdb-scripts-configmap
+      containers:
+      - name: postgres
+        image: {{ .Values.postgres.image }}
+        resources:
+          requests:
+            memory: "{{ .Values.postgres.memoryGb }}Gi"
+            cpu: "{{ .Values.postgres.cpus }}"
+        env:
+          - name: PGDATA
+            value: /data
+          - name: POSTGRES_DB
+            value: chaingraph
+          - name: POSTGRES_USER
+            value: chaingraph
+          - name: POSTGRES_PASSWORD
+            value: {{ .Values.postgres.password }}
+        livenessProbe:
+          exec:
+            command: ["/bin/sh", "-c", "exec pg_isready -U chaingraph -d chaingraph -h 127.0.0.1 -p 5432"]
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 6
+        readinessProbe:
+          exec:
+            command: ["/bin/sh", "-c", "-e", "exec pg_isready -U chaingraph -d chaingraph -h 127.0.0.1 -p 5432"]
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 6
+        ports:
+          - containerPort: 5432
+            name: postgres
+        volumeMounts:
+          - name: postgres-volume
+            mountPath: /data
+          - name: postgres-dev-shm
+            mountPath: /dev/shm
+          - name: postgres-initdb-scripts
+            mountPath: /docker-entrypoint-initdb.d
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-volume
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: {{ .Values.postgres.volumeSize }}
+      {{- if .Values.useDevelopmentVolumes }}
+      volumeName: postgres-volume
+      {{- end }}
+{{- end }}

@@ -1,0 +1,36 @@
+{{- if .Values.pgHero.enable }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pghero-configmap
+  labels:
+    app: pghero
+    {{- include "chaingraph.labels" . | nindent 4 }}
+data:
+  pghero.yml: |-
+    databases:
+      main:
+        url: {{ .Values.postgres.externalDbUrl | default (print "postgres://chaingraph:" .Values.postgres.password "@postgres-service." .Release.Namespace ".svc.cluster.local:5432/chaingraph") }}
+
+      # Add more databases
+      # other:
+      #   url:
+
+    # Minimum time for long running queries
+    # long_running_query_sec: 60
+
+    # Minimum average time for slow queries
+    # slow_query_ms: 20
+
+    # Minimum calls for slow queries
+    # slow_query_calls: 100
+
+    # Minimum connections for high connections warning
+    # total_connections_threshold: 500
+
+    # Statement timeout for explain
+    # explain_timeout_sec: 10
+
+    # Time zone (Ruby on Rails names: e.g. "Eastern Time (US & Canada)", "UTC")
+    time_zone: "Eastern Time (US & Canada)"
+{{- end }}

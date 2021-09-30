@@ -1,0 +1,18 @@
+table:
+  name: node
+  schema: public
+array_relationships:
+- name: accepted_blocks
+  using:
+    foreign_key_constraint_on:
+      column: node_internal_id
+      table:
+        name: node_block
+        schema: public
+- name: unconfirmed_transactions
+  using:
+    foreign_key_constraint_on:
+      column: node_internal_id
+      table:
+        name: node_transaction
+        schema: public

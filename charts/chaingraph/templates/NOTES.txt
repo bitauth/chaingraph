@@ -1,0 +1,91 @@
+..............................................................
+:    ____ _           _                             _        :
+:   / ___| |__   __ _(_)_ __   __ _ _ __ __ _ _ __ | |__     :
+:  | |   | '_ \ / _` | | '_ \ / _` | '__/ _` | '_ \| '_ \    :
+:  | |___| | | | (_| | | | | | (_| | | | (_| | |_) | | | |   :
+:   \____|_| |_|\__,_|_|_| |_|\__, |_|  \__,_| .__/|_| |_|   :
+:                             |___/          |_|             :
+:............................................................:
+
+Chaingraph was installed successfully!
+
+Below are some notes about your configuration. You may want to copy and save the below information for future reference.
+
+{{ if .Values.useDevelopmentVolumes }}
+--- Development Volumes ---
+Development volumes are enabled. You'll find each volume listed in the `data` directory.
+{{ end }}
+--- Chaingraph Agent ---
+{{- if .Values.agent.enable }}
+enabled (managed internally)
+
+CHAINGRAPH_TRUSTED_NODES: {{ include "chaingraph.trustedNodes" . }}
+{{ else }}
+disabled (managed externally)
+{{ end }}
+--- Internal Trusted Nodes ---
+{{- if .Values.bitcoinCashNode.enable }}
+Bitcoin Cash Node: enabled
+{{ else }}
+Bitcoin Cash Node: disabled
+{{ end }}
+{{- if .Values.postgres.externalDbUrl }}
+--- External Postgres Database ---
+Chaingraph has been configured to use an externally-managed postgres database:
+{{ .Values.postgres.externalDbUrl }}
+{{ else }}
+--- Internal Postgres Database ---
+Chaingraph has been configured to use an internally-managed postgres database. This is typically easier and less expensive, but may not be suitable for applications requiring high-availability. (For details, see the documentation for 'postgres.externalDbUrl'.)
+
+To forward the postgres port locally, run:
+```
+kubectl port-forward postgres-0 5432:5432
+```
+You'll then be able to connect to the database locally:
+postgresql://chaingraph:{{ .Values.postgres.password }}@localhost:5432/chaingraph
+
+If this is the first time you've installed/upgraded Chaingraph with the internal postgres database enabled, the following settings were automatically applied. If you're upgrading an existing Chaingraph deployment, you may need to manually update your Postgres configuration:
+```
+{{ include "chaingraph.postgres.init-db-config" . }}
+```
+{{ end }}
+{{- if .Values.hasura.enableConsole }}
+--- Hasura Console ---
+The Hasura Console is enabled (not recommended for production). To access it locally, run:
+```
+yarn dev-cluster:port-forward:hasura
+Then visit: http://localhost:8080/
+```
+Hasura admin secret key: {{ .Values.hasura.adminSecretKey }}
+{{ end }}
+{{- if .Values.hasura.enableDevelopmentMode }}
+--- Hasura Development Mode ---
+Note: Hasura is in development mode. This should be disabled for production applications. (For details, see the documentation for 'hasura.enableDevelopmentMode'.)
+{{ end }}
+{{- if .Values.pgAdmin.enable }}
+--- pgAdmin ---
+pgAdmin is enabled. To access it locally, run:
+```
+yarn dev-cluster:port-forward:pgadmin
+```
+Then visit: http://localhost:8081/
+email/username: {{ .Values.pgAdmin.adminEmail }}
+password: {{ .Values.pgAdmin.adminPassword }}
+
+On first access, you'll need to create a new server connection:
+{{ if .Values.postgres.externalDbUrl }}{{ .Values.postgres.externalDbUrl }}{{ else }}
+Host name/address: {{ print "postgres-service." .Release.Namespace ".svc.cluster.local" }}
+Port: 5432
+Username: chaingraph
+password: {{ .Values.postgres.password }}
+{{ end }}
+{{ end }}
+{{- if .Values.pgAdmin.enable }}
+--- pgHero ---
+pgHero is enabled. To access it locally, run:
+```
+yarn dev-cluster:port-forward:pghero
+```
+Then visit: http://localhost:8082/
+{{ end }}
+---

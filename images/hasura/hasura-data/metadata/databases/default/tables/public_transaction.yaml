@@ -1,0 +1,108 @@
+table:
+  name: transaction
+  schema: public
+array_relationships:
+- name: authchains
+  using:
+    manual_configuration:
+      column_mapping:
+        internal_id: transaction_internal_id
+      insertion_order: null
+      remote_table:
+        name: authchain_view
+        schema: public
+- name: block_inclusions
+  using:
+    foreign_key_constraint_on:
+      column: transaction_internal_id
+      table:
+        name: block_transaction
+        schema: public
+- name: input_outpoint_transactions
+  using:
+    manual_configuration:
+      column_mapping:
+        hash: outpoint_transaction_hash
+      insertion_order: null
+      remote_table:
+        name: input
+        schema: public
+- name: inputs
+  using:
+    foreign_key_constraint_on:
+      column: transaction_internal_id
+      table:
+        name: input
+        schema: public
+- name: node_validation_timeline
+  using:
+    foreign_key_constraint_on:
+      column: transaction_internal_id
+      table:
+        name: node_transaction_history
+        schema: public
+- name: node_validations
+  using:
+    foreign_key_constraint_on:
+      column: transaction_internal_id
+      table:
+        name: node_transaction
+        schema: public
+- name: outputs
+  using:
+    foreign_key_constraint_on:
+      column: transaction_hash
+      table:
+        name: output
+        schema: public
+computed_fields:
+- definition:
+    function:
+      name: transaction_data_carrier_outputs
+      schema: public
+  name: data_carrier_outputs
+- definition:
+    function:
+      name: transaction_encoded_hex
+      schema: public
+  name: encoded_hex
+- comment: ""
+  definition:
+    function:
+      name: transaction_fee_satoshis
+      schema: public
+  name: fee_satoshis
+- definition:
+    function:
+      name: transaction_identity_output
+      schema: public
+  name: identity_output
+- comment: ""
+  definition:
+    function:
+      name: transaction_input_count
+      schema: public
+  name: input_count
+- comment: ""
+  definition:
+    function:
+      name: transaction_input_value_satoshis
+      schema: public
+  name: input_value_satoshis
+- comment: ""
+  definition:
+    function:
+      name: transaction_output_count
+      schema: public
+  name: output_count
+- comment: ""
+  definition:
+    function:
+      name: transaction_output_value_satoshis
+      schema: public
+  name: output_value_satoshis
+- definition:
+    function:
+      name: transaction_signing_output
+      schema: public
+  name: signing_output

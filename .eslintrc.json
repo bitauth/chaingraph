@@ -1,0 +1,30 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "project": ["./tsconfig.json", "src/tsconfig.json"]
+  },
+  "env": { "es6": true },
+  "plugins": ["import", "eslint-comments", "functional"],
+  "ignorePatterns": ["node_modules", "build", "coverage"],
+  "extends": ["bitauth"],
+  "rules": {
+    "valid-jsdoc": "off",
+    "no-process-exit": "error",
+    "@typescript-eslint/explicit-member-accessibility": "off",
+    "@typescript-eslint/require-await": "off",
+    "@typescript-eslint/prefer-readonly-parameter-types": "off",
+    "@typescript-eslint/object-curly-spacing": "off",
+    "@typescript-eslint/consistent-indexed-object-style": [
+      "error",
+      "index-signature"
+    ],
+    "@typescript-eslint/no-non-null-assertion": "off",
+    "functional/no-class": "off",
+    "functional/no-conditional-statement": "off",
+    "functional/no-this-expression": "off",
+    "functional/no-expression-statement": "off",
+    "functional/no-return-void": "off",
+    "functional/immutable-data": "off"
+  }
+}

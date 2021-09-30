@@ -1,0 +1,56 @@
+{{- if .Values.useDevelopmentVolumes }}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: bitcoin-cash-node-volume
+  labels:
+    type: local
+    developmentVolume: bitcoin-cash-node
+spec:
+  storageClassName: local-path
+  persistentVolumeReclaimPolicy: Retain
+  capacity:
+    storage: {{ .Values.bitcoinCashNode.volumeSize }}
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/data/bitcoin-cash-node"
+{{- if not .Values.postgres.externalDbUrl }}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-volume
+  labels:
+    type: local
+    developmentVolume: postgres
+spec:
+  storageClassName: local-path
+  persistentVolumeReclaimPolicy: Retain
+  capacity:
+    storage: {{ .Values.postgres.volumeSize }}
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/data/postgres"
+{{- end }}
+{{- if .Values.pgAdmin.enable }}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pgadmin-volume
+  labels:
+    type: local
+    developmentVolume: pgadmin
+spec:
+  storageClassName: local-path
+  persistentVolumeReclaimPolicy: Retain
+  capacity:
+    storage: {{ .Values.pgAdmin.volumeSize }}
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/data/pgadmin"
+{{- end }}
+{{- end }}

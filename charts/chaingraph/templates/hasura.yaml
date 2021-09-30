@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hasura
+  labels:
+    app: hasura
+    {{- include "chaingraph.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hasura
+      {{- include "chaingraph.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: hasura
+        {{- include "chaingraph.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+      - image: {{ .Values.hasura.image }}
+        imagePullPolicy: "IfNotPresent" # required to avoid attempting to re-pull local images
+        name: hasura
+        env:
+        - name: HASURA_GRAPHQL_METADATA_DATABASE_URL
+          value: {{ .Values.hasura.metadataDbUrl | default ( .Values.postgres.externalDbUrl | default (print "postgres://chaingraph:" .Values.postgres.password "@postgres-service." .Release.Namespace ".svc.cluster.local:5432/chaingraph")) }}
+        - name: HASURA_GRAPHQL_DATABASE_URL
+          value: {{ .Values.postgres.externalDbUrl | default (print "postgres://chaingraph:" .Values.postgres.password "@postgres-service." .Release.Namespace ".svc.cluster.local:5432/chaingraph") }}
+        - name: HASURA_GRAPHQL_ADMIN_SECRET
+          value: {{ .Values.hasura.adminSecretKey | quote }}
+        - name: HASURA_GRAPHQL_ENABLE_CONSOLE
+          value: {{ .Values.hasura.enableConsole | quote }}
+        - name: HASURA_GRAPHQL_DEV_MODE
+          value: {{ .Values.hasura.enableDevelopmentMode | quote }}
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        resources: {}

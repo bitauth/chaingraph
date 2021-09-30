@@ -1,0 +1,12 @@
+{{- if not .Values.postgres.externalDbUrl }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-initdb-scripts-configmap
+  labels:
+    app: postgres
+    {{- include "chaingraph.labels" . | nindent 4 }}
+data:
+  init-db-config.sql: |-
+    {{- include "chaingraph.postgres.init-db-config" . | nindent 4 }}
+{{- end }}

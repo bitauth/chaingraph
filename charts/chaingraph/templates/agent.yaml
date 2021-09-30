@@ -1,0 +1,65 @@
+{{- if .Values.agent.enable }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chaingraph-agent
+  labels:
+    app: chaingraph-agent
+    {{- include "chaingraph.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chaingraph-agent
+      {{- include "chaingraph.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: chaingraph-agent
+        {{- include "chaingraph.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+      - image: {{ .Values.agent.image }}
+        imagePullPolicy: "IfNotPresent" # required to avoid attempting to re-pull local images
+        name: chaingraph-agent
+        env:
+        - name: CHAINGRAPH_POSTGRES_CONNECTION_STRING
+          value: {{ .Values.postgres.externalDbUrl | default (print "postgres://chaingraph:" .Values.postgres.password "@postgres-service." .Release.Namespace ".svc.cluster.local:5432/chaingraph") }}
+        - name: CHAINGRAPH_POSTGRES_MAX_CONNECTIONS
+          value: {{ .Values.agent.maxConnections | quote }}
+        - name: CHAINGRAPH_BLOCK_BUFFER_TARGET_SIZE_MB
+          value: {{ .Values.agent.blockBufferTargetSizeMb | quote }}
+        - name: CHAINGRAPH_GENESIS_BLOCKS
+          value: {{ .Values.agent.genesisBlocks | quote }}
+        - name: CHAINGRAPH_TRUSTED_NODES
+          value: {{ include "chaingraph.trustedNodes" . }}
+        - name: CHAINGRAPH_USER_AGENT
+          value: {{ .Values.agent.userAgent | quote }}
+        - name: CHAINGRAPH_LOG_PATH
+          value: "false"
+        - name: NODE_ENV
+          value: "production"
+        - name: CHAINGRAPH_LOG_LEVEL_STDOUT
+          value: {{ .Values.agent.logLevel | quote }}
+        - name: CHAINGRAPH_HEALTH_CHECK_PORT
+          value: {{ .Values.agent.port | quote }}
+        livenessProbe:
+          httpGet:
+            path: /healthcheck
+            port: {{ .Values.agent.port }}
+          initialDelaySeconds: 30
+          periodSeconds: 60
+          timeoutSeconds: 15
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /healthcheck
+            port: {{ .Values.agent.port }}
+          initialDelaySeconds: 30
+          periodSeconds: 60
+          timeoutSeconds: 15
+          successThreshold: 1
+          failureThreshold: 3
+        resources: {}
+{{- end }}

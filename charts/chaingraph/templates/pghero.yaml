@@ -1,0 +1,58 @@
+{{- if .Values.pgHero.enable }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pghero
+  labels:
+    app: pghero
+    {{- include "chaingraph.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pghero
+      {{- include "chaingraph.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: pghero
+        {{- include "chaingraph.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/pghero-configmap.yaml") . | sha256sum }}
+    spec:
+      containers:
+      - image: {{ .Values.pgHero.image }}
+        imagePullPolicy: "IfNotPresent" # required to avoid attempting to re-pull local images
+        name: pghero
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 60
+          timeoutSeconds: 15
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 60
+          timeoutSeconds: 15
+          successThreshold: 1
+          failureThreshold: 3
+        volumeMounts:
+        - name: pghero-configmap
+          mountPath: /app/config/pghero.yml
+          readOnly: true
+          subPath: pghero.yml
+      volumes:
+      - name: pghero-configmap
+        configMap:
+          defaultMode: 0644
+          name: pghero-configmap
+{{- end }}

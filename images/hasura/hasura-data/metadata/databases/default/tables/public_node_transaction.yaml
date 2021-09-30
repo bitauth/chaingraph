@@ -1,0 +1,10 @@
+table:
+  name: node_transaction
+  schema: public
+object_relationships:
+- name: node
+  using:
+    foreign_key_constraint_on: node_internal_id
+- name: transaction
+  using:
+    foreign_key_constraint_on: transaction_internal_id

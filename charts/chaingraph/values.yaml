@@ -1,0 +1,86 @@
+# Default values for Chaingraph.
+
+# If set, allocate persistent volumes for development.
+useDevelopmentVolumes: false
+
+# Configuration settings for the agent which handles database synchronization in Chaingraph
+agent:
+  # Manage the Chaingraph agent from this chart.
+  enable: true
+  # The precise Chaingraph Agent Docker image to use.
+  image: chaingraph/agent@TODO # TODO: deploy
+  # A list of trusted external nodes to which this Chaingraph instance should connect. If specified, this list will be appended to the list of trusted nodes which are managed by this Chaingraph chart.
+  # This must be specified using the same format as `CHAINGRAPH_TRUSTED_NODES`, e.g. `bchn:127.0.0.1:8333:main,bchd:127.0.0.1:8334:main,another:127.0.0.1:8335:e3e1f3e8`
+  externalNodes: ''
+  # User-Agent string to share with trusted nodes. If not set, the default `/chaingraph:[version]/` will be used.
+  # e.g. CHAINGRAPH_USER_AGENT=/chaingraph-custom:0.0.0/
+  userAgent: ''
+  # The maximum number of connections the agent should maintain to the database.
+  maxConnections: 20
+  # The target size (in MB) of the buffer which holds downloaded blocks waiting to be saved to the database. This primarily affects memory usage during the initial chain sync.
+  blockBufferTargetSizeMb: 20
+  # A mapping of network magic bytes to hex-encoded genesis blocks.
+  # Format: `NETWORK_MAGIC:RAW_GENESIS_BLOCK_HEX`, comma separated.
+  # E.g. CHAINGRAPH_GENESIS_BLOCKS=e3e1f3e8:rawblockhex,deadbeef:rawblockhex
+  genesisBlocks: 'e3e1f3e8:0100000000000000000000000000000000000000000000000000000000000000000000003ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a29ab5f49ffff001d1dac2b7c0101000000010000000000000000000000000000000000000000000000000000000000000000ffffffff4d04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73ffffffff0100f2052a01000000434104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac00000000,dab5bffa:0100000043497fd7f826957108f4a30fd9cec3aeba79972084e90ead01ea330900000000bac8b0fa927c0ac8234287e33c5f74d38d354820e24756ad709d7038fc5f31f020e7494dffff001d03e4b6720101000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0e0420e7494d017f062f503253482fffffffff0100f2052a010000002321021aeaf2f8638a129a3156fbe7e5ef635226b0bafd495ff03afe2c843d7e3a4b51ac00000000'
+  # The port on which the health check and process monitoring metrics should be served.
+  port: 3200
+  # The minimum log level to print to STDOUT. May be `trace`, `debug`, `info`, `warn`, `error`, or `fatal`.
+  logLevel: 'debug'
+
+# Configuration settings for the built-in Bitcoin Cash Node
+bitcoinCashNode:
+  # Enable a local Bitcoin Cash Node.
+  enable: true
+  # The precise Bitcoin Cash Node Docker image to use.
+  image: chaingraph/bitcoin-cash-node@sha256:d829edd2e0211dc97eb63a56301130a03e061d91fd91c31d559e3af58c678526 # v22.0.0
+  # The size of the volume to provision for Bitcoin Cash Node.
+  volumeSize:  200Gi
+
+# Configuration settings for the Postgres database to be used by Chaingraph
+postgres:
+  # If not set, a simple, internal, single-instance Postgres database will be used.
+  #
+  # It's recommended this be configured to use a managed, highly-available external Postgres database for uptime-critical applications.
+  # For development and lower-cost applications, the default, built-in postgres instance is ideal.
+  externalDbUrl: ''
+  # The precise Postgres Docker image to use (only used if `externalPostgresDbUrl` is not set).
+  image: postgres@sha256:c83014a2b46834ef6d17f64c8e4a70089901a8c0dee158f1ca5ccae032ea32e5 # v13.2
+  # The Postgres password to use (only used if `externalPostgresDbUrl` is not set).
+  password: 'very_insecure_postgres_password'
+  # The size of the volume to provision for the internal Postgres database (only used if `externalPostgresDbUrl` is not set).
+  volumeSize: 520Gi
+  # The memory available to the kubernetes node intended for running the Postgres database (ideally, the highest-resource node in the cluster)
+  memoryGb: 1
+  # The number of CPUs available to the kubernetes node intended for running the Postgres database (ideally, the highest-resource node in the cluster)
+  cpus: 1
+
+hasura:
+  # The precise Hasura Docker image to use.
+  image: chaingraph/hasura@TODO # TODO: deploy
+  # A secret key used to secure admin access in Hasura.
+  adminSecretKey: ''
+  # Enable the console served by Hasura.
+  enableConsole: false
+  # Enable Hasura debugging mode. It is recommended to disable this in production.
+  enableDevelopmentMode: true
+  # An alternative Postgres database URL in which Hasura metadata should be stored. If not set, metadata will be stored in the configured Postgres database.
+  metadataDbUrl: ''
+
+pgAdmin:
+  # Enable a local pgAdmin installation. (This should only be used during development.)
+  enable: false
+  # The precise pgAdmin Docker image to use (only used if `pgAdmin.enable` is `true`).
+  image: dpage/pgadmin4@sha256:a16f42afe887fbbaec183d72f10699405cb5234579a8dae394f53b3e71a3924c
+  # The size of the volume to provision for pgAdmin (only used if `pgAdmin.enable` is `true`).
+  volumeSize: 10Gi
+  # The admin email/username used to log in to pgAdmin
+  adminEmail: 'admin@cluster.local'
+  # The admin password used to log in to pgAdmin
+  adminPassword: 'very_insecure_pgadmin_password'
+
+pgHero:
+  # Enable a local pgAdmin installation. (This should only be used during development.)
+  enable: false
+  # The precise pgHero Docker image to use (only used if `pgAdmin.enable` is `true`).
+  image: ankane/pghero@sha256:292ed571a0d76dd2a023f383cccb6ba59a7b7c336433c8e9502010ca1f1b4294

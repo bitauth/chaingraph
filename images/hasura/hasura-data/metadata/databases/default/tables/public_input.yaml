@@ -1,0 +1,43 @@
+table:
+  name: input
+  schema: public
+object_relationships:
+- name: outpoint
+  using:
+    manual_configuration:
+      column_mapping:
+        outpoint_index: output_index
+        outpoint_transaction_hash: transaction_hash
+      insertion_order: null
+      remote_table:
+        name: output
+        schema: public
+- name: outpoint_transaction
+  using:
+    manual_configuration:
+      column_mapping:
+        outpoint_transaction_hash: transaction_hash
+      insertion_order: null
+      remote_table:
+        name: output
+        schema: public
+- name: transaction
+  using:
+    foreign_key_constraint_on: transaction_internal_id
+computed_fields:
+- definition:
+    function:
+      name: input_redeem_bytecode_pattern
+      schema: public
+  name: redeem_bytecode_pattern
+- definition:
+    function:
+      name: input_unlocking_bytecode_pattern
+      schema: public
+  name: unlocking_bytecode_pattern
+- comment: ""
+  definition:
+    function:
+      name: input_value_satoshis
+      schema: public
+  name: value_satoshis

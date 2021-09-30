@@ -1,0 +1,51 @@
+table:
+  name: block
+  schema: public
+object_relationships:
+- name: previous_block
+  using:
+    manual_configuration:
+      column_mapping:
+        previous_block_hash: hash
+      insertion_order: null
+      remote_table:
+        name: block
+        schema: public
+array_relationships:
+- name: accepted_by
+  using:
+    foreign_key_constraint_on:
+      column: block_internal_id
+      table:
+        name: node_block
+        schema: public
+- name: transactions
+  using:
+    foreign_key_constraint_on:
+      column: block_internal_id
+      table:
+        name: block_transaction
+        schema: public
+computed_fields:
+- definition:
+    function:
+      name: block_encoded_hex
+      schema: public
+  name: encoded_hex
+- comment: ""
+  definition:
+    function:
+      name: block_fee_satoshis
+      schema: public
+  name: fee_satoshis
+- definition:
+    function:
+      name: block_header_encoded_hex
+      schema: public
+  name: header
+- comment: ""
+  definition:
+    function:
+      name: block_transaction_count
+      schema: public
+  name: transaction_count

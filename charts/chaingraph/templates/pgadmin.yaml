@@ -1,0 +1,75 @@
+{{- if .Values.pgAdmin.enable }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: pgadmin
+  labels:
+    app: pgadmin
+    {{- include "chaingraph.labels" . | nindent 4 }}
+spec:
+  serviceName: "pgadmin-service"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgadmin
+      {{- include "chaingraph.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: pgadmin
+        {{- include "chaingraph.selectorLabels" . | nindent 8 }}
+    spec:
+      initContainers:
+        - name: init-pgadmin
+          image: {{ .Values.pgAdmin.image }}
+          command: ["/bin/chown", "-R", "5050:5050", "/var/lib/pgadmin"]
+          volumeMounts:
+            - name: pgadmin-volume
+              mountPath: /var/lib/pgadmin
+          securityContext:
+            runAsUser: 0
+      containers:
+      - name: pgadmin
+        image: {{ .Values.pgAdmin.image }}
+        env:
+          - name: PGADMIN_DEFAULT_EMAIL
+            value: {{ .Values.pgAdmin.adminEmail }}
+          - name: PGADMIN_DEFAULT_PASSWORD
+            value: {{ .Values.pgAdmin.adminPassword }}
+        ports:
+          - name: http
+            containerPort: 80
+            protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /misc/ping
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 60
+          timeoutSeconds: 15
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /misc/ping
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 60
+          timeoutSeconds: 15
+          successThreshold: 1
+          failureThreshold: 3
+        volumeMounts:
+          - name: pgadmin-volume
+            mountPath: /var/lib/pgadmin
+  volumeClaimTemplates:
+  - metadata:
+      name: pgadmin-volume
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: {{ .Values.pgAdmin.volumeSize }}
+      {{- if .Values.useDevelopmentVolumes }}
+      volumeName: pgadmin-volume
+      {{- end }}
+{{- end }}

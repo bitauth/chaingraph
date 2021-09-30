@@ -1,0 +1,12 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "eamodio.gitlens",
+    "gruntfuggly.todo-tree",
+    "streetsidesoftware.code-spell-checker",
+    "mikestead.dotenv",
+    "graphql.vscode-graphql",
+    "frigus02.vscode-sql-tagged-template-literals"
+  ]
+}

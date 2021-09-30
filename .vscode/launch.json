@@ -1,39 +1,80 @@
 {
   "version": "0.2.0",
-  "configurations": [{
+  "configurations": [
+    {
       "type": "node",
       "request": "launch",
-      "name": "Debug Project",
-      // we test in `build` to make cleanup fast and easy
-      "cwd": "${workspaceFolder}/build",
-      // Replace this with your project root. If there are multiple, you can
-      // automatically run the currently visible file with: "program": ${file}"
-      "program": "${workspaceFolder}/src/cli/cli.ts",
-      // "args": ["--no-install"],
-      "outFiles": ["${workspaceFolder}/build/main/**/*.js"],
+      "name": "Debug chaingraph",
+      "program": "${workspaceFolder}/bin/chaingraph",
+      "cwd": "${workspaceFolder}",
+      "env": { "CHAINGRAPH_USER_AGENT": "/chaingraph:vscode-debug/" },
+      "skipFiles": ["<node_internals>/**/*.js"]
+    },
+    // To debug, make sure a *.spec.ts file is active in the editor, then run a configuration
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Active Spec",
+      "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/ava",
+      "runtimeArgs": ["debug", "--break", "--serial", "${file}"],
+      "port": 9229,
+      "outputCapture": "std",
       "skipFiles": [
         "<node_internals>/**/*.js",
-        "${workspaceFolder}/node_modules/**/*.js"
+        "${workspaceFolder}/node_modules/ava/**/*.js"
       ],
-      "preLaunchTask": "npm: build",
-      "stopOnEntry": true,
-      "smartStep": true,
-      "runtimeArgs": ["--nolazy"],
-      "env": {
-        "TYPESCRIPT_STARTER_REPO_URL": "${workspaceFolder}"
-      },
-      "console": "externalTerminal"
+      "preLaunchTask": "npm: build"
+    },
+    {
+      // Use this one if you're already running `yarn watch`
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Active Spec (no build)",
+      "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/ava",
+      "runtimeArgs": ["debug", "--break", "--serial", "${file}"],
+      "port": 9229,
+      "outputCapture": "std",
+      "skipFiles": [
+        "<node_internals>/**/*.js",
+        "${workspaceFolder}/node_modules/ava/**/*.js"
+      ]
     },
     {
       "type": "node",
       "request": "launch",
-      "name": "Debug Spec",
-      "program": "${workspaceRoot}/.vscode/debug-ts.js",
-      "args": ["${file}"],
-      "skipFiles": ["<node_internals>/**/*.js"],
-      // Consider using `npm run watch` or `yarn watch` for faster debugging
-      // "preLaunchTask": "npm: build",
-      // "smartStep": true,
-      "runtimeArgs": ["--nolazy"]
-    }]
+      "name": "Debug E2E tests (no build)",
+      "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/ava",
+      "runtimeArgs": [
+        "debug",
+        "--break",
+        "--serial",
+        "${workspaceFolder}/src/e2e/e2e.spec.ts"
+      ],
+      "port": 9229,
+      "outputCapture": "std",
+      "skipFiles": [
+        "<node_internals>/**/*.js",
+        "${workspaceFolder}/node_modules/ava/**/*.js"
+      ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug E2E Postgres tests (no build)",
+      "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/ava",
+      "runtimeArgs": [
+        "debug",
+        "--break",
+        "--serial",
+        "${workspaceFolder}/src/e2e/e2e.spec.ts",
+        "--match='*[e2e]*[postgres]*'"
+      ],
+      "port": 9229,
+      "outputCapture": "std",
+      "skipFiles": [
+        "<node_internals>/**/*.js",
+        "${workspaceFolder}/node_modules/ava/**/*.js"
+      ]
+    }
+  ]
 }
