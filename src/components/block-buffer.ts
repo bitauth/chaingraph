@@ -92,8 +92,10 @@ export class BlockBuffer {
      *
      * After blocks have been downloaded, the expected size of each next block
      * is the average of all currently buffered blocks.
+     *
+     * TODO: future proofing: `assumedMaxBlockSize` should be 32MB, but setting it that high currently causes intermittent e2e test failures when `this.count()` is `0` and reservations take up all available space. There may be a bug with reservations not being released.
      */
-    const assumedMaxBlockSize = 32_000_000;
+    const assumedMaxBlockSize = 1_000_000;
     const currentTotal = this.currentTotalBytes();
     const currentLength = this.bufferedBlocks.length;
     const averageBlock =

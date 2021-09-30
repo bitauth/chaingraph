@@ -6,7 +6,7 @@ import type { ChaingraphBlock } from '../types/chaingraph';
 import { BlockBuffer } from './block-buffer';
 
 const oneMB = 1_000_000;
-const maxBlockMB = 32_000_000;
+const maxExpectedBlockMB = oneMB;
 
 const fakeBlock = (size: number) => ({ sizeBytes: size } as ChaingraphBlock);
 
@@ -38,7 +38,7 @@ test('BlockBuffer: general use', (t) => {
   blockBuffer.reserveBlock();
   blockBuffer.reserveBlock();
   blockBuffer.reserveBlock();
-  t.deepEqual(blockBuffer.currentlyAllocatedSize(), 3 * maxBlockMB);
+  t.deepEqual(blockBuffer.currentlyAllocatedSize(), 3 * maxExpectedBlockMB);
   t.true(blockBuffer.isFull());
 
   blockBuffer.addBlock(fake1);
@@ -84,7 +84,7 @@ test('BlockBuffer: general use', (t) => {
   t.deepEqual(blockBuffer.currentlyAllocatedSize(), 0);
 });
 
-test('BlockBuffer: initial reservations require 32MB', (t) => {
+test('BlockBuffer: initial reservations require 1MB', (t) => {
   const blockBuffer = new BlockBuffer({
     freedSpaceCallback: () => {
       t.pass();
@@ -92,6 +92,6 @@ test('BlockBuffer: initial reservations require 32MB', (t) => {
     targetSize: oneMB,
   });
   blockBuffer.reserveBlock();
-  t.deepEqual(blockBuffer.currentlyAllocatedSize(), maxBlockMB);
+  t.deepEqual(blockBuffer.currentlyAllocatedSize(), maxExpectedBlockMB);
   t.true(blockBuffer.isFull());
 });
