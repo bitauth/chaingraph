@@ -2,5 +2,3 @@
 [![Docker Image Size (latest semver)](https://img.shields.io/docker/image-size/chaingraph/agent)](https://hub.docker.com/r/chaingraph/bitcoin-cash-node/tags)
 
 # chaingraph/agent
-
-<!-- TODO: build & test docker image using GitHub Actions -->
