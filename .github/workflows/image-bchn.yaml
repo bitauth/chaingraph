@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
+      - name: Checkout
+        uses: actions/checkout@v2
       - name: Get version
         run: |
           echo "::set-output name=version::$(grep -F 'ENV BITCOIN_VERSION' images/bitcoin-cash-node/Dockerfile | grep -oE '[0-9.]+')"
@@ -26,5 +28,8 @@ jobs:
         id: docker_build
         uses: docker/build-push-action@v2
         with:
+          context: images/bitcoin-cash-node
           push: true
           tags: chaingraph/bitcoin-cash-node:latest,chaingraph/bitcoin-cash-node:${{ steps.get_version.outputs.version }}
+      - name: Echo image digest
+        run: echo ${{ steps.docker_build.outputs.digest }}
