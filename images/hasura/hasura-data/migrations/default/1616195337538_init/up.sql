@@ -281,7 +281,7 @@ CREATE TRIGGER trigger_public_node_transaction_insert
     AFTER INSERT ON node_transaction
     REFERENCING NEW TABLE AS new_table
     FOR EACH STATEMENT EXECUTE FUNCTION trigger_node_transaction_insert();
-COMMENT ON TRIGGER trigger_public_node_transaction_insert ON node_transaction IS 'A trigger which removes previously-accepted transactions from node_transaction when the accepting node validates new transactions which would double-spend those  previously-accepted transactions. This only occurs if a node intentionally replaces previously-heard transactions (e.g. replace-by-fee, replace-by-ZCE, manual replacements, etc.).';
+COMMENT ON TRIGGER trigger_public_node_transaction_insert ON node_transaction IS 'A trigger which removes previously-accepted transactions from node_transaction when the accepting node validates new transactions which would double-spend those previously-accepted transactions. This only occurs if a node intentionally replaces previously-heard transactions (e.g. replace-by-fee, replace-by-ZCE, manual replacements, etc.).';
 
 CREATE OR REPLACE FUNCTION trigger_node_block_insert() RETURNS trigger
   LANGUAGE plpgsql
