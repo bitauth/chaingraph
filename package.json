@@ -70,7 +70,7 @@
     "local:postgres:configure-pghero-step-1": "yarn local:postgres:psql -c \"ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_statements';\" && yarn local:postgres:psql -c \"ALTER SYSTEM SET track_activity_query_size = 20480;\" && echo \"\nThe 'pg_stat_statements' extension will be enabled when the Postgres database is restarted. If 'local:posgres' is running, restart it; if using the built-in Postgres, try: 'yarn dev-cluster:bounce:postgres'.\"",
     "local:postgres:configure-pghero-step-2": "yarn local:postgres:psql -c \"ALTER SYSTEM SET pg_stat_statements.track = 'all';\" && yarn local:postgres:psql -c \"SELECT pg_reload_conf();\" && echo \"\nThe 'pg_stat_statements' extension is now tracking all queries. PgHero should be fully functional.\"",
     "local:postgres:enable-pldbgapi": "yarn local:postgres:psql -c \"ALTER SYSTEM SET shared_preload_libraries = pg_stat_statements,'\\$libdir/plugin_debugger';\" && echo \"\nThe 'pg_stat_statements' and 'plugin_debugger' extensions will be enabled when the Postgres database is restarted. If 'local:posgres' is running, restart it; if using the built-in Postgres, try: 'yarn dev-cluster:bounce:postgres'.\"",
-    "image:build:agent": "docker build -f images/chaingraph-agent/agent.Dockerfile . -t chaingraph/agent",
+    "image:build:agent": "docker build -f images/agent/Dockerfile . -t chaingraph/agent",
     "image:build:bchn": "cd images/bitcoin-cash-node && docker build -t chaingraph/bitcoin-cash-node .",
     "image:build:hasura": "cd images/hasura && docker build -t chaingraph/hasura .",
     "image:build:postgres-pldebugger": "cd images/postgres-pldebugger && docker build -t chaingraph/postgres-pldebugger .",
