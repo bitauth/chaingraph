@@ -22,17 +22,20 @@ jobs:
     steps:
       - name: Check out repository code
         uses: actions/checkout@v2
-      - uses: actions/setup-node@v2
+      - name: Install Node.js
+        uses: actions/setup-node@v2
         with:
           node-version: '16'
           cache: 'yarn'
       - run: yarn install
       - run: yarn test
       - run: yarn cov:lcov
-      - uses: codecov/codecov-action@v2
+      - name: Upload test coverage
+        uses: codecov/codecov-action@v2
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-      - uses: actions/upload-artifact@v2
+      - name: Save E2E test logs
+        uses: actions/upload-artifact@v2
         if: always()
         with:
           name: e2e-test-log
