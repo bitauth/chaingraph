@@ -22,6 +22,8 @@ spec:
       containers:
       - name: bitcoin-cash-node-testnet
         image: {{ .Values.bitcoinCashNodeTestnet.image | default .Values.bitcoinCashNode.image }}
+        command: ["bitcoind"]
+        args: ["-testnet4"]
         ports:
           - containerPort: 18332
             name: testnet-rpc
