@@ -36,7 +36,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
       {{-  $secret.data.adminSecretKey -}}
     {{- else -}}
       {{/* Generate new key */}}
-      {{- (randAlphaNum 64) | b64enc | quote -}}
+      {{- (randAlphaNum 64) -}}
     {{- end -}}
   {{- end -}}
 {{- end -}}
@@ -51,7 +51,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
       {{-  $secret.data.postgresPassword -}}
     {{- else -}}
       {{/* Generate new password */}}
-      {{- (randAlphaNum 64) | b64enc | quote -}}
+      {{- (randAlphaNum 64) -}}
     {{- end -}}
   {{- end -}}
 {{- end -}}

@@ -26,7 +26,9 @@ spec:
           volumeMounts:
             - name: pgadmin-volume
               mountPath: /var/lib/pgadmin
+              {{- if not .Values.useDevelopmentVolumes }} # https://github.com/rancher/k3d/issues/765
               subPath: pgadmin
+              {{ end }}
           securityContext:
             runAsUser: 0
       containers:
@@ -62,7 +64,9 @@ spec:
         volumeMounts:
           - name: pgadmin-volume
             mountPath: /var/lib/pgadmin
+            {{- if not .Values.useDevelopmentVolumes }} # https://github.com/rancher/k3d/issues/765
             subPath: pgadmin
+            {{ end }}
   volumeClaimTemplates:
   - metadata:
       name: pgadmin-volume

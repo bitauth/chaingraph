@@ -30,7 +30,9 @@ spec:
         volumeMounts:
           - name: bitcoin-cash-node-volume
             mountPath: /data
+            {{- if not .Values.useDevelopmentVolumes }} # https://github.com/rancher/k3d/issues/765
             subPath: bitcoin-cash-node
+            {{ end }}
   volumeClaimTemplates:
   - metadata:
       name: bitcoin-cash-node-volume

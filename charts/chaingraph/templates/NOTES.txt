@@ -43,10 +43,10 @@ kubectl port-forward postgres-0 5432:5432
 ```
 {{ if .Values.postgres.password }}
 You'll then be able to connect to the database locally:
-postgresql://{{ .Values.postgres.username }}:{{ .Values.postgres.password }}@localhost:5432/chaingraph
+postgres://{{ .Values.postgres.username }}:{{ .Values.postgres.password }}@localhost:5432/chaingraph
 {{ else }}
 You'll then be able to connect to the database locally:
-postgresql://{{ .Values.postgres.username }}:POSTGRES_PASSWORD@localhost:5432/chaingraph
+postgres://{{ .Values.postgres.username }}:POSTGRES_PASSWORD@localhost:5432/chaingraph
 
 To get the configured, randomly-generated POSTGRES_PASSWORD, inspect chaingraph-secrets:
 ```

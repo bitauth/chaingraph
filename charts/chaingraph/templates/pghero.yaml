@@ -49,7 +49,9 @@ spec:
         - name: pghero-configmap
           mountPath: /app/config/pghero.yml
           readOnly: true
+          {{- if not .Values.useDevelopmentVolumes }} # https://github.com/rancher/k3d/issues/765
           subPath: pghero.yml
+          {{ end }}
       volumes:
       - name: pghero-configmap
         configMap:

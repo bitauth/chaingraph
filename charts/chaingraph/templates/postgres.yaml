@@ -76,7 +76,9 @@ spec:
         volumeMounts:
           - name: postgres-volume
             mountPath: /data
+            {{- if not .Values.useDevelopmentVolumes }} # https://github.com/rancher/k3d/issues/765
             subPath: postgres
+            {{ end }}
           - name: postgres-dev-shm
             mountPath: /dev/shm
           - name: postgres-initdb-scripts

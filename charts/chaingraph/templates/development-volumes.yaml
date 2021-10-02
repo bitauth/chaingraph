@@ -31,7 +31,7 @@ spec:
   accessModes:
     - ReadWriteOnce
   hostPath:
-    path: "/data/bitcoin-cash-node"
+    path: "/data/bitcoin-cash-node-testnet"
 {{- if not .Values.postgres.externalDbUrl }}
 ---
 apiVersion: v1
