@@ -3,7 +3,6 @@
  * `CHAINGRAPH_LOG_PATH` configuration.
  */
 import { readFileSync } from 'fs';
-import { isIP } from 'net';
 import { homedir } from 'os';
 import { join, resolve } from 'path';
 
@@ -215,18 +214,17 @@ Invalid segment: ${entry}`
 
 /**
  * Derived from the `CHAINGRAPH_TRUSTED_NODES` environment variable. Format:
- * `NODE_NAME:IP_ADDRESS:PORT_NUMBER:NETWORK`, nodes are separated by commas.
+ * `NODE_NAME:HOST:PORT_NUMBER:NETWORK`, nodes are separated by commas.
  * NETWORK may be provided as `main` (0xe3e1f3e8), `test` (0xdab5bffa), or 4
  * hex-encoded "magic bytes", e.g. `e3e1f3e8`.
  *
  * E.g. `TRUSTED_NODES=bchn:127.0.0.1:8333:main,bchd:127.0.0.1:8334:main`
  */
 const trustedNodes = configuration.CHAINGRAPH_TRUSTED_NODES.split(',').map(
-  // eslint-disable-next-line complexity
   (node) => {
     const parts = node.split(':');
     const expectedParts = 4;
-    const [name, ip, portString, networkMagic] = parts;
+    const [name, host, portString, networkMagic] = parts;
     const networkMagicHex = validateNetworkMagic(networkMagic);
     if (!Object.keys(genesisBlocks).includes(networkMagicHex)) {
       // eslint-disable-next-line functional/no-throw-statement
@@ -238,14 +236,13 @@ const trustedNodes = configuration.CHAINGRAPH_TRUSTED_NODES.split(',').map(
     if (
       parts.length !== expectedParts ||
       parts.every((part) => typeof part !== 'string') ||
-      isIP(ip) === 0 ||
       isNaN(port)
     ) {
       // eslint-disable-next-line functional/no-throw-statement
       throw new Error(
         `Improperly formatted 'CHAINGRAPH_TRUSTED_NODES' environment variable.
 
-Expected format: NODE_NAME:IP_ADDRESS:PORT_NUMBER:NETWORK,NODE_NAME:IP_ADDRESS:PORT_NUMBER:NETWORK,...
+Expected format: NODE_NAME:HOST:PORT_NUMBER:NETWORK,NODE_NAME:HOST:PORT_NUMBER:NETWORK,...
 E.g.: TRUSTED_NODES=bchn:127.0.0.1:8333:main,bchd:127.0.0.1:8334:e3e1f3e8
 
 Invalid segment: ${node}`
@@ -255,7 +252,7 @@ Invalid segment: ${node}`
       /**
        * The IP address of this trusted node.
        */
-      ip,
+      ip: host,
       /**
        * The name of this trusted node – used as a stable identifier between
        * restarts.

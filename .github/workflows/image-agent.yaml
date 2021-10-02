@@ -4,6 +4,11 @@ on:
     paths:
       - 'images/agent/**'
       - '!images/agent/readme.md'
+      - 'tsconfig.json'
+      - 'defaults.env'
+      - 'bin/**'
+      - 'src/**'
+      - '!src/**.spec.**'
     branches:
       - 'master'
 
