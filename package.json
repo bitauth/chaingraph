@@ -26,7 +26,7 @@
     "dev-cluster:docker:stats": "docker stats",
     "dev-cluster:images:load:hasura": "k3d image import chaingraph/hasura:latest -c chaingraph-development-cluster",
     "dev-cluster:images:load:postgres-pldebugger": "k3d image import chaingraph/postgres-pldebugger:latest -c chaingraph-development-cluster",
-    "dev-cluster:upgrade": "helm upgrade --install chaingraph-development charts/chaingraph --set useDevelopmentVolumes=true --set hasura.image=chaingraph/hasura:latest --set hasura.adminSecretKey=very_insecure_hasura_admin_secret_key --set agent.enable=false --set pgAdmin.enable=true --set pgHero.enable=true",
+    "dev-cluster:upgrade": "helm upgrade --install chaingraph-development charts/chaingraph --set useDevelopmentVolumes=true --set hasura.image=chaingraph/hasura:latest --set hasura.adminSecretKey=very_insecure_hasura_admin_secret_key --set postgres.password=very_insecure_postgres_password --set agent.enable=false --set pgAdmin.enable=true --set pgHero.enable=true",
     "dev-cluster:upgrade:dry-run": "yarn dev-cluster:upgrade --dry-run",
     "dev-cluster:debug-chart": "helm template charts/chaingraph --debug",
     "dev-cluster:upgrade:local-postgres": "yarn dev-cluster:upgrade --set postgres.externalDbUrl=postgres://chaingraph:very_insecure_postgres_password@host.k3d.internal:5432/postgres",

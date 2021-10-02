@@ -10,7 +10,7 @@ data:
   pghero.yml: |-
     databases:
       main:
-        url: {{ .Values.postgres.externalDbUrl | default (print "postgres://chaingraph:" .Values.postgres.password "@postgres-service." .Release.Namespace ".svc.cluster.local:5432/chaingraph") }}
+        url: {{ .Values.postgres.externalDbUrl | default (print "postgres://" .Values.postgres.username ":" .Values.postgres.password "@postgres-service." .Release.Namespace ".svc.cluster.local:5432/chaingraph") }}
 
       # Add more databases
       # other:

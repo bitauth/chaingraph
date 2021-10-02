@@ -40,9 +40,20 @@ spec:
           - name: POSTGRES_DB
             value: chaingraph
           - name: POSTGRES_USER
-            value: chaingraph
+            value: {{ .Values.postgres.username }}
           - name: POSTGRES_PASSWORD
+          {{ if .Values.postgres.password }}
             value: {{ .Values.postgres.password }}
+          {{ else }}
+            valueFrom:
+              secretKeyRef:
+                name: chaingraph-secrets
+                key: postgresPassword
+          {{ end }}
+          - name: POSTGRES_HOST_AUTH_METHOD
+            value: scram-sha-256
+          - name: POSTGRES_INITDB_ARGS
+            value: --auth-host=scram-sha-256
         livenessProbe:
           exec:
             command: ["/bin/sh", "-c", "exec pg_isready -U chaingraph -d chaingraph -h 127.0.0.1 -p 5432"]
@@ -65,6 +76,7 @@ spec:
         volumeMounts:
           - name: postgres-volume
             mountPath: /data
+            subPath: postgres
           - name: postgres-dev-shm
             mountPath: /dev/shm
           - name: postgres-initdb-scripts

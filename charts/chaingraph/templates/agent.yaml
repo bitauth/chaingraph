@@ -1,3 +1,4 @@
+{{ $chaingraphPostgresPassword := include "chaingraph.postgresPassword"  . | quote }}
 {{- if .Values.agent.enable }}
 apiVersion: apps/v1
 kind: Deployment
@@ -24,7 +25,14 @@ spec:
         name: chaingraph-agent
         env:
         - name: CHAINGRAPH_POSTGRES_CONNECTION_STRING
-          value: {{ .Values.postgres.externalDbUrl | default (print "postgres://chaingraph:" .Values.postgres.password "@postgres-service." .Release.Namespace ".svc.cluster.local:5432/chaingraph") }}
+        {{ if .Values.postgres.externalDbUrl }}
+          value: {{ .Values.postgres.externalDbUrl }}
+        {{ else }}
+          valueFrom:
+            secretKeyRef:
+              name: chaingraph-secrets
+              key: postgresConnectionString
+        {{ end }}
         - name: CHAINGRAPH_POSTGRES_MAX_CONNECTIONS
           value: {{ .Values.agent.maxConnections | quote }}
         - name: CHAINGRAPH_BLOCK_BUFFER_TARGET_SIZE_MB

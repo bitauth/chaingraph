@@ -1,16 +1,11 @@
-..............................................................
-:    ____ _           _                             _        :
-:   / ___| |__   __ _(_)_ __   __ _ _ __ __ _ _ __ | |__     :
-:  | |   | '_ \ / _` | | '_ \ / _` | '__/ _` | '_ \| '_ \    :
-:  | |___| | | | (_| | | | | | (_| | | | (_| | |_) | | | |   :
-:   \____|_| |_|\__,_|_|_| |_|\__, |_|  \__,_| .__/|_| |_|   :
-:                             |___/          |_|             :
-:............................................................:
+These notes provide important details about your Chaingraph configuration, consider saving them for future reference.
 
-Chaingraph was installed successfully!
+--- Management Tips ---
+View status of pods: $ kubectl get pods
+Get pod details: $ kubectl describe pod hasura
+Tail pod logs: $ kubectl logs -f bitcoin-cash-node-0
 
-Below are some notes about your configuration. You may want to copy and save the below information for future reference.
-
+For more, see: https://kubernetes.io/docs/reference/kubectl/cheatsheet/
 {{ if .Values.useDevelopmentVolumes }}
 --- Development Volumes ---
 Development volumes are enabled. You'll find each volume listed in the `data` directory.
@@ -24,10 +19,15 @@ CHAINGRAPH_TRUSTED_NODES: {{ include "chaingraph.trustedNodes" . }}
 disabled (managed externally)
 {{ end }}
 --- Internal Trusted Nodes ---
-{{- if .Values.bitcoinCashNode.enable }}
-Bitcoin Cash Node: enabled
-{{ else }}
-Bitcoin Cash Node: disabled
+{{ if .Values.bitcoinCashNode.enable -}}
+  Bitcoin Cash Node (mainnet): enabled (requested volume size: {{ .Values.bitcoinCashNode.volumeSize }}, image: {{ .Values.bitcoinCashNode.image }})
+{{ else -}}
+  Bitcoin Cash Node (mainnet): disabled
+{{ end -}}
+{{ if .Values.bitcoinCashNodeTestnet.enable -}}
+  Bitcoin Cash Node (testnet): enabled (requested volume size: {{ .Values.bitcoinCashNodeTestnet.volumeSize }}, image: {{ .Values.bitcoinCashNodeTestnet.image | default .Values.bitcoinCashNode.image }})
+{{ else -}}
+  Bitcoin Cash Node (testnet): disabled
 {{ end }}
 {{- if .Values.postgres.externalDbUrl }}
 --- External Postgres Database ---
@@ -35,32 +35,50 @@ Chaingraph has been configured to use an externally-managed postgres database:
 {{ .Values.postgres.externalDbUrl }}
 {{ else }}
 --- Internal Postgres Database ---
-Chaingraph has been configured to use an internally-managed postgres database. This is typically easier and less expensive, but may not be suitable for applications requiring high-availability. (For details, see the documentation for 'postgres.externalDbUrl'.)
+Chaingraph has been configured to use an internally-managed postgres database. This is typically easier and less expensive, but may not be suitable for applications requiring high availability. (For details, see the documentation for 'postgres.externalDbUrl'.)
 
 To forward the postgres port locally, run:
 ```
 kubectl port-forward postgres-0 5432:5432
 ```
+{{ if .Values.postgres.password }}
 You'll then be able to connect to the database locally:
-postgresql://chaingraph:{{ .Values.postgres.password }}@localhost:5432/chaingraph
+postgresql://{{ .Values.postgres.username }}:{{ .Values.postgres.password }}@localhost:5432/chaingraph
+{{ else }}
+You'll then be able to connect to the database locally:
+postgresql://{{ .Values.postgres.username }}:POSTGRES_PASSWORD@localhost:5432/chaingraph
 
-If this is the first time you've installed/upgraded Chaingraph with the internal postgres database enabled, the following settings were automatically applied. If you're upgrading an existing Chaingraph deployment, you may need to manually update your Postgres configuration:
+To get the configured, randomly-generated POSTGRES_PASSWORD, inspect chaingraph-secrets:
+```
+{{`kubectl get secret chaingraph-secrets -o go-template='{{range $k,$v := .data}}{{"### "}}{{$k}}{{"\n"}}{{$v|base64decode}}{{"\n\n"}}{{end}}'`}}
+```
+{{ end }}
+{{- if .Release.IsUpgrade -}}
+If you're upgrading an existing internal Postgres database, any changes to the Postgres username or password cannot be made by Helm – you'll need to manually ALTER USER in the database.
+
+Additionally, Helm cannot tune an existing Postgres database (postgres.memoryGb and postgres.cpus). Below are the tuning settings Helm applied if this upgrade created a new internal Postgres database; to tune an existing database, apply these changes manually and restart the server (using `kubectl scale statefulsets postgres --replicas=0 && kubectl rollout status statefulset/postgres && kubectl scale statefulsets postgres --replicas=1`):
+{{ else }}
+Since this is the first time you've installed Chaingraph, the following settings were automatically applied:
+{{ end -}}
 ```
 {{ include "chaingraph.postgres.init-db-config" . }}
 ```
 {{ end }}
-{{- if .Values.hasura.enableConsole }}
---- Hasura Console ---
-The Hasura Console is enabled (not recommended for production). To access it locally, run:
+--- Hasura ---
+{{ if .Values.hasura.adminSecretKey -}}
+  Hasura Admin Secret Key: {{ .Values.hasura.adminSecretKey }}
+{{ else -}}
+To get the configured, randomly-generated "Hasura Admin Secret Key", inspect chaingraph-secrets:
 ```
-yarn dev-cluster:port-forward:hasura
-Then visit: http://localhost:8080/
+{{`kubectl get secret chaingraph-secrets -o go-template='{{range $k,$v := .data}}{{"### "}}{{$k}}{{"\n"}}{{$v|base64decode}}{{"\n\n"}}{{end}}'`}}
 ```
-Hasura admin secret key: {{ .Values.hasura.adminSecretKey }}
 {{ end }}
-{{- if .Values.hasura.enableDevelopmentMode }}
---- Hasura Development Mode ---
-Note: Hasura is in development mode. This should be disabled for production applications. (For details, see the documentation for 'hasura.enableDevelopmentMode'.)
+{{- if .Values.hasura.enableConsole }}
+The hosted Hasura Console is enabled. (Not recommended; use Hasura CLI's `hasura console` instead.) To access it locally, run:
+```
+kubectl port-forward $(kubectl get pod -l app=hasura -o jsonpath=\"{.items[0].metadata.name}\") 8080:8080
+```
+Then visit: http://localhost:8080/
 {{ end }}
 {{- if .Values.pgAdmin.enable }}
 --- pgAdmin ---
@@ -76,8 +94,8 @@ On first access, you'll need to create a new server connection:
 {{ if .Values.postgres.externalDbUrl }}{{ .Values.postgres.externalDbUrl }}{{ else }}
 Host name/address: {{ print "postgres-service." .Release.Namespace ".svc.cluster.local" }}
 Port: 5432
-Username: chaingraph
-password: {{ .Values.postgres.password }}
+Username: {{ .Values.postgres.username }}
+password: {{ .Values.postgres.password | default "[ see above note on inspecting chaingraph-secrets ]" }}
 {{ end }}
 {{ end }}
 {{- if .Values.pgAdmin.enable }}
@@ -89,3 +107,16 @@ yarn dev-cluster:port-forward:pghero
 Then visit: http://localhost:8082/
 {{ end }}
 ---
+
+..............................................................
+:    ____ _           _                             _        :
+:   / ___| |__   __ _(_)_ __   __ _ _ __ __ _ _ __ | |__     :
+:  | |   | '_ \ / _` | | '_ \ / _` | '__/ _` | '_ \| '_ \    :
+:  | |___| | | | (_| | | | | | (_| | | | (_| | |_) | | | |   :
+:   \____|_| |_|\__,_|_|_| |_|\__, |_|  \__,_| .__/|_| |_|   :
+:                             |___/          |_|             :
+:............................................................:
+
+Chaingraph was installed successfully 🚀
+
+Above are some notes about your configuration. You may want to copy and save these notes for future reference.

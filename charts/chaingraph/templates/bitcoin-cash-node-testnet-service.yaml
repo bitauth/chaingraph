@@ -1,0 +1,20 @@
+{{- if .Values.bitcoinCashNodeTestnet.enable }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: bitcoin-cash-node-testnet-service
+  labels:
+    app: bitcoin-cash-node-testnet
+    {{- include "chaingraph.labels" . | nindent 4 }}
+spec:
+  ports:
+    - name: testnet-rpc
+      port: 18332
+      targetPort: 18332
+    - name: testnet-p2p
+      port: 18333
+      targetPort: 18333
+  type: ClusterIP
+  selector:
+    app: bitcoin-cash-node-testnet
+{{- end }}

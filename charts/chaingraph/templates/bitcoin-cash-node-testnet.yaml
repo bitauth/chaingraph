@@ -1,0 +1,45 @@
+{{- if .Values.bitcoinCashNodeTestnet.enable }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: bitcoin-cash-node-testnet
+  labels:
+    app: bitcoin-cash-node-testnet
+    {{- include "chaingraph.labels" . | nindent 4 }}
+spec:
+  serviceName: "bitcoin-cash-node-service"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bitcoin-cash-node-testnet
+      {{- include "chaingraph.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: bitcoin-cash-node-testnet
+        {{- include "chaingraph.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+      - name: bitcoin-cash-node-testnet
+        image: {{ .Values.bitcoinCashNodeTestnet.image | default .Values.bitcoinCashNode.image }}
+        ports:
+          - containerPort: 18332
+            name: testnet-rpc
+          - containerPort: 18333
+            name: testnet-p2p
+        volumeMounts:
+          - name: bitcoin-cash-node-testnet-volume
+            mountPath: /data
+            subPath: bitcoin-cash-node-testnet
+  volumeClaimTemplates:
+  - metadata:
+      name: bitcoin-cash-node-testnet-volume
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: {{ .Values.bitcoinCashNodeTestnet.volumeSize }}
+      {{- if .Values.useDevelopmentVolumes }}
+      volumeName: bitcoin-cash-node-testnet-volume
+      {{- end }}
+{{- end }}

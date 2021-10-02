@@ -1,3 +1,4 @@
+{{- if .Values.pgAdmin.enable }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -14,3 +15,4 @@ spec:
   selector:
     app: pgadmin
   type: ClusterIP
+{{- end }}

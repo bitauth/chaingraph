@@ -22,16 +22,39 @@ spec:
         imagePullPolicy: "IfNotPresent" # required to avoid attempting to re-pull local images
         name: hasura
         env:
-        - name: HASURA_GRAPHQL_METADATA_DATABASE_URL
-          value: {{ .Values.hasura.metadataDbUrl | default ( .Values.postgres.externalDbUrl | default (print "postgres://chaingraph:" .Values.postgres.password "@postgres-service." .Release.Namespace ".svc.cluster.local:5432/chaingraph")) }}
         - name: HASURA_GRAPHQL_DATABASE_URL
-          value: {{ .Values.postgres.externalDbUrl | default (print "postgres://chaingraph:" .Values.postgres.password "@postgres-service." .Release.Namespace ".svc.cluster.local:5432/chaingraph") }}
+          {{ if .Values.postgres.externalDbUrl }}
+          value: {{ .Values.postgres.externalDbUrl }}
+          {{ else }}
+          valueFrom:
+            secretKeyRef:
+              name: chaingraph-secrets
+              key: postgresConnectionString
+          {{ end }}
+        - name: HASURA_GRAPHQL_METADATA_DATABASE_URL
+          {{ if .Values.hasura.metadataDbUrl }}
+          value: {{ .Values.hasura.metadataDbUrl }}
+          {{ else if .Values.postgres.externalDbUrl }}
+          value: {{ .Values.postgres.externalDbUrl }}
+          {{ else }}
+          valueFrom:
+            secretKeyRef:
+              name: chaingraph-secrets
+              key: postgresConnectionString
+          {{ end }}
         - name: HASURA_GRAPHQL_ADMIN_SECRET
-          value: {{ .Values.hasura.adminSecretKey | quote }}
+          {{ if .Values.hasura.adminSecretKey }}
+          value: {{ .Values.hasura.adminSecretKey }}
+          {{ else }}
+          valueFrom:
+            secretKeyRef:
+              name: chaingraph-secrets
+              key: adminSecretKey
+          {{ end }}
         - name: HASURA_GRAPHQL_ENABLE_CONSOLE
           value: {{ .Values.hasura.enableConsole | quote }}
-        - name: HASURA_GRAPHQL_DEV_MODE
-          value: {{ .Values.hasura.enableDevelopmentMode | quote }}
+        - name: HASURA_GRAPHQL_ADMIN_INTERNAL_ERRORS
+          value: 'true'
         ports:
         - containerPort: 8080
           protocol: TCP

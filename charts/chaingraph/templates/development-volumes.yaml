@@ -15,6 +15,23 @@ spec:
     - ReadWriteOnce
   hostPath:
     path: "/data/bitcoin-cash-node"
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: bitcoin-cash-node-testnet-volume
+  labels:
+    type: local
+    developmentVolume: bitcoin-cash-node-testnet
+spec:
+  storageClassName: local-path
+  persistentVolumeReclaimPolicy: Retain
+  capacity:
+    storage: {{ .Values.bitcoinCashNode.volumeSize }}
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/data/bitcoin-cash-node"
 {{- if not .Values.postgres.externalDbUrl }}
 ---
 apiVersion: v1

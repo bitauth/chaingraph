@@ -1,3 +1,4 @@
+{{- if .Values.pgHero.enable }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -13,3 +14,4 @@ spec:
   selector:
     app: pghero
   type: ClusterIP
+{{- end }}

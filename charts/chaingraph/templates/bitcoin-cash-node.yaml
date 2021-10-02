@@ -27,13 +27,10 @@ spec:
             name: mainnet-rpc
           - containerPort: 8333
             name: mainnet-p2p
-          - containerPort: 18332
-            name: testnet-rpc
-          - containerPort: 18333
-            name: testnet-p2p
         volumeMounts:
           - name: bitcoin-cash-node-volume
             mountPath: /data
+            subPath: bitcoin-cash-node
   volumeClaimTemplates:
   - metadata:
       name: bitcoin-cash-node-volume

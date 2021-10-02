@@ -1,20 +1,16 @@
-{{/*
-Expand the name of the chart.
-*/}}
+{{/* Expand the name of the chart. */}}
 {{- define "chaingraph.name" -}}
-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+  {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Create chart name and version as used by the chart label.
 */}}
 {{- define "chaingraph.chart" -}}
-{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+  {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-{{/*
-Common labels
-*/}}
+{{/* Common labels */}}
 {{- define "chaingraph.labels" -}}
 helm.sh/chart: {{ include "chaingraph.chart" . }}
 {{ include "chaingraph.selectorLabels" . }}
@@ -24,18 +20,43 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
-{{/*
-Selector labels
-*/}}
+{{/* Selector labels */}}
 {{- define "chaingraph.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "chaingraph.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
+{{- define "chaingraph.hasuraAdminSecretKey" -}}
+  {{- if .Values.hasura.adminSecretKey -}}
+    {{ .Values.hasura.adminSecretKey }}
+  {{- else -}}
+    {{- $secret := (lookup "v1" "Secret" .Release.Namespace "chaingraph-secrets") -}}
+    {{- if $secret -}}
+      {{/* Reusing current key since secret exists */}}
+      {{-  $secret.data.adminSecretKey -}}
+    {{- else -}}
+      {{/* Generate new key */}}
+      {{- (randAlphaNum 64) | b64enc | quote -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
 
-{{/*
-Postgres configuration
-*/}}
+{{- define "chaingraph.postgresPassword" -}}
+  {{- if .Values.postgres.password -}}
+    {{ .Values.postgres.password }}
+  {{- else -}}
+    {{- $secret := (lookup "v1" "Secret" .Release.Namespace "chaingraph-secrets") -}}
+    {{- if $secret -}}
+      {{/* Reusing current password since secret exists */}}
+      {{-  $secret.data.postgresPassword -}}
+    {{- else -}}
+      {{/* Generate new password */}}
+      {{- (randAlphaNum 64) | b64enc | quote -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{/* Postgres configuration */}}
 {{- define "chaingraph.postgres.init-db-config" -}}
 ALTER SYSTEM SET shared_buffers = '{{ div (mul 1024 .Values.postgres.memoryGb) 4 }}MB';
 ALTER SYSTEM SET effective_cache_size = '{{ mul 3 (div (mul 1024 .Values.postgres.memoryGb) 4) }}MB';
@@ -54,15 +75,17 @@ ALTER SYSTEM SET max_parallel_workers = '{{ .Values.postgres.cpus }}';
 ALTER SYSTEM SET max_parallel_maintenance_workers = '{{ max 1 (div .Values.postgres.cpus 2) }}';
 {{- end }}
 
-{{/*
-Chaingraph trusted nodes
-*/}}
+{{/* Chaingraph trusted nodes */}}
 {{- define "chaingraph.trustedNodes" -}}
-    {{- if .Values.agent.externalNodes -}}
-      {{ .Values.agent.externalNodes }}
-    {{- end -}}
-  {{- if .Values.bitcoinCashNode.enable -}}
-    {{- if .Values.agent.externalNodes -}},{{- end -}}
-    {{ print "bchn:bitcoin-cash-node-service." .Release.Namespace ".svc.cluster.local:8333:main" }}
+  {{- $trustedNodes := list "PLACEHOLDER" -}}
+  {{- if .Values.agent.externalNodes -}}
+    {{- $trustedNodes = append $trustedNodes .Values.agent.externalNodes -}}
   {{- end -}}
+  {{- if .Values.bitcoinCashNode.enable -}}
+    {{- $trustedNodes = append $trustedNodes (print "bchn:bitcoin-cash-node-service." .Release.Namespace ".svc.cluster.local:8333:main") -}}
+  {{- end -}}
+  {{- if .Values.bitcoinCashNodeTestnet.enable -}}
+    {{- $trustedNodes = append $trustedNodes (print "tbchn:bitcoin-cash-node-testnet-service." .Release.Namespace ".svc.cluster.local:18333:test") -}}
+  {{- end -}}
+  {{- $trustedNodes | join "," | trimPrefix "PLACEHOLDER," -}}
 {{- end }}
