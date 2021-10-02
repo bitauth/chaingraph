@@ -2,7 +2,7 @@ name: Release Helm Chart
 on:
   push:
     paths:
-      - 'charts/**'
+      - 'charts/chaingraph/Chart.yaml'
     branches:
       - 'master'
 jobs:
