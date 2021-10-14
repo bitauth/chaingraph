@@ -7,7 +7,10 @@ import type {
   BitcoreBlockHeader,
   BitcoreTransaction,
 } from '@chaingraph/bitcore-p2p-cash';
-import { BitcoreInventoryType } from '@chaingraph/bitcore-p2p-cash';
+import {
+  BitcoreInventoryType,
+  internalBitcore,
+} from '@chaingraph/bitcore-p2p-cash';
 import LRU from 'lru-cache';
 
 import {
@@ -327,18 +330,20 @@ export class Agent {
         shouldRetryConnection: true,
       };
 
+      /**
+       * Bitcore doesn't error on duplicate Network additions, so we just use
+       * the networkMagic hex as the name. All other fields are left undefined,
+       * they aren't needed by Chaingraph.
+       *
+       * TODO: replace all uses of bitcore
+       */
+      internalBitcore.Networks.add({
+        name: node.networkMagicHex,
+        networkMagic: parseInt(node.networkMagicHex, 16),
+      });
       const peer = new Peer({
-        /*
-         * customNetwork: {
-         *   networkMagic: Buffer.from(node.networkMagicHex),
-         *   port: node.port,
-         * },
-         */
-        host: node.ip,
-        network: {
-          networkMagic: Buffer.from(node.networkMagicHex),
-          // port: node.port,
-        },
+        host: node.host,
+        network: node.networkMagicHex,
         port: node.port,
         subversion: chaingraphUserAgent,
         version: chaingraphProtocolVersion,
@@ -490,7 +495,7 @@ export class Agent {
           logger.trace(
             `${node.name}: inv message item - type: ${
               inventoryItem.type
-            } hash: ${inventoryItem.hash.slice().reverse().toString('hex')}`
+            } hash: ${inventoryItem.hash.toString('hex')}`
           );
           // TODO: clean up handling of endianness (bitcore tries to be clever here)
           if (inventoryItem.type !== BitcoreInventoryType.MSG_TX) {
@@ -498,12 +503,9 @@ export class Agent {
               logger.warn(
                 `${
                   node.name
-                }: received unexpected block inventory item with hash: ${inventoryItem.hash
-                  .slice()
-                  .reverse()
-                  .toString(
-                    'hex'
-                  )} – does this node support SendHeaders? Attempting legacy sync:`
+                }: received unexpected block inventory item with hash: ${inventoryItem.hash.toString(
+                  'hex'
+                )} – does this node support SendHeaders? Attempting legacy sync:`
               );
               this.requestHeaders(node.name);
               return;
@@ -511,10 +513,7 @@ export class Agent {
             logger.warn(
               `${node.name}: received unexpected inventory item of type ${
                 inventoryItem.type
-              } with hash: ${inventoryItem.hash
-                .slice()
-                .reverse()
-                .toString('hex')}`
+              } with hash: ${inventoryItem.hash.toString('hex')}`
             );
             return;
           }
@@ -529,7 +528,7 @@ export class Agent {
             logger.trace(
               `Requesting transaction from ${
                 node.name
-              } - hash: ${inventoryItem.hash.slice().reverse().toString('hex')}`
+              } - hash: ${inventoryItem.hash.toString('hex')}`
             );
             /**
              * Chaingraph immediately requests the contents of every unknown
@@ -768,7 +767,7 @@ export class Agent {
           bestHeight,
           nodeName,
           pendingHeight,
-          syncPercentage: pendingHeight / bestHeight,
+          syncPercentage: bestHeight === 0 ? 1 : pendingHeight / bestHeight,
         };
       })
       .filter(
@@ -788,6 +787,13 @@ export class Agent {
     const percentages = this.getChainSyncPercentages();
     const [leastSyncedChain] = percentages;
     if (leastSyncedChain.pendingHeight >= leastSyncedChain.bestHeight) {
+      logger.trace(
+        `All remaining blocks from least-synced chain are pending – ${
+          leastSyncedChain.nodeName
+        }: ${leastSyncedChain.pendingHeight}/${
+          leastSyncedChain.bestHeight
+        } (${renderSyncPercentage(leastSyncedChain.syncPercentage)})%`
+      );
       return false;
     }
     const { nodeName, pendingHeight } = leastSyncedChain;
@@ -797,7 +803,7 @@ export class Agent {
         leastSyncedChain.nodeName
       } | selected: ${height} | best: ${
         leastSyncedChain.bestHeight
-      } | synced: ${renderSyncPercentage(leastSyncedChain.syncPercentage)}`
+      } | synced: ${renderSyncPercentage(leastSyncedChain.syncPercentage)}%`
     );
     const hash = this.blockTree.getBlockHeaderHash(nodeName, height)!;
     const sourceNodes = this.blockTree.getSourceNodesForBlockHeader(
@@ -819,7 +825,7 @@ export class Agent {
       const { syncState } = this.nodes[nodeName];
       if (this.blockDb === undefined || syncState === undefined) {
         logger.trace(
-          'catchUpViaHeaders: DB not yet connected, or syncState unknown.'
+          `${nodeName}: catchUpViaHeaders - DB not yet connected, or syncState unknown.`
         );
         return;
       }
@@ -922,7 +928,7 @@ export class Agent {
       return;
     }
     const [node] = this.orderNodesByExpectedDownloadSpeed(nodeNames);
-    logger.trace(`Requesting block ${height} from node: ${node}`);
+    logger.trace(`Requesting block ${height} (${hash}) from node: ${node}`);
     const download = {
       hash,
       height,

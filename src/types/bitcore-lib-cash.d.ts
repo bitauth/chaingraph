@@ -91,4 +91,25 @@ declare module 'bitcore-lib-cash' {
 
     transactions: Transaction[];
   }
+
+  interface Network {
+    readonly name: string;
+    readonly alias: string;
+    readonly pubkeyhash: number;
+    readonly privatekey: number;
+    readonly scripthash: number;
+    readonly xpubkey: number;
+    readonly xprivkey: number;
+    readonly prefix: string;
+    readonly prefixArray: number[];
+    readonly networkMagic: number;
+    readonly port: number;
+    readonly dnsSeeds: string[];
+  }
+
+  export namespace Networks {
+    function add(data: Partial<Network>): Network;
+    function remove(network: Network): void;
+    function get(nameOrAlias: string): Network;
+  }
 }

@@ -23,6 +23,9 @@ spec:
       - image: {{ .Values.agent.image }}
         imagePullPolicy: "IfNotPresent" # required to avoid attempting to re-pull local images
         name: chaingraph-agent
+        ports:
+          - containerPort: {{ .Values.agent.port }}
+            name: healthcheck
         env:
         - name: CHAINGRAPH_POSTGRES_CONNECTION_STRING
         {{ if .Values.postgres.externalDbUrl }}

@@ -174,6 +174,7 @@ export class BlockTree {
    * @param nodeName - a valid `node.name` as provided during construction.
    * @param headers - the array of headers from a `headers` message
    */
+  // eslint-disable-next-line complexity
   updateHeaders(nodeName: string, headers: BitcoreBlockHeader[]) {
     const chain = this.getHashChain(nodeName);
     if (headers.length === 0) {
@@ -197,6 +198,13 @@ export class BlockTree {
       return this.getLocatorForNode(nodeName);
     }
     const firstHeight = previousHeight + 1;
+    const lastHeader = headers[headers.length - 1];
+    if (chain.lastIndexOf(lastHeader.hash) !== -1) {
+      this.logger.warn(
+        `BlockTree: ${nodeName} unexpectedly sent a set of already-known headers from ${firstHeader.hash} (height: ${firstHeight}) to ${lastHeader.hash} (headers sent: ${headers.length}). Requesting headers using a fresh locator...`
+      );
+      return this.getLocatorForNode(nodeName);
+    }
     const newHashes = headers.map((header) => header.hash);
     const staleHashes = chain.splice(
       firstHeight,

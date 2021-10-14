@@ -7,7 +7,7 @@ metadata:
     app: bitcoin-cash-node
     {{- include "chaingraph.labels" . | nindent 4 }}
 spec:
-  serviceName: "bitcoin-cash-node-service"
+  serviceName: bitcoin-cash-node-service
   replicas: 1
   selector:
     matchLabels:
@@ -22,9 +22,10 @@ spec:
       containers:
       - name: bitcoin-cash-node
         image: {{ .Values.bitcoinCashNode.image }}
+        env:
+        - name: APPEND_TO_BITCOIN_CONF
+          value: "disablewallet=1\nwhitelist=0.0.0.0/0"
         ports:
-          - containerPort: 8332
-            name: mainnet-rpc
           - containerPort: 8333
             name: mainnet-p2p
         volumeMounts:

@@ -7,7 +7,7 @@ metadata:
     app: bitcoin-cash-node-testnet
     {{- include "chaingraph.labels" . | nindent 4 }}
 spec:
-  serviceName: "bitcoin-cash-node-service"
+  serviceName: bitcoin-cash-node-testnet-service
   replicas: 1
   selector:
     matchLabels:
@@ -22,12 +22,11 @@ spec:
       containers:
       - name: bitcoin-cash-node-testnet
         image: {{ .Values.bitcoinCashNodeTestnet.image | default .Values.bitcoinCashNode.image }}
-        command: ["bitcoind"]
-        args: ["-testnet4"]
+        env:
+        - name: APPEND_TO_BITCOIN_CONF
+          value: "disablewallet=1\nwhitelist=0.0.0.0/0\ntestnet4=1"
         ports:
-          - containerPort: 18332
-            name: testnet-rpc
-          - containerPort: 18333
+          - containerPort: 28333
             name: testnet-p2p
         volumeMounts:
           - name: bitcoin-cash-node-testnet-volume

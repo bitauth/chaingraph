@@ -10,7 +10,7 @@ agent:
   # The precise Chaingraph Agent Docker image to use.
   image: chaingraph/agent@sha256:7b38c94f5e6dd9e6e5a1c60ff68ba8ba3e7b781511c622924bc36173895386b9 # f497280
   # A list of trusted external nodes to which this Chaingraph instance should connect. If specified, this list will be appended to the list of trusted nodes which are managed by this Chaingraph chart.
-  # This must be specified using the same format as `CHAINGRAPH_TRUSTED_NODES`, e.g. `bchn:127.0.0.1:8333:main,bchd:127.0.0.1:8334:main,another:127.0.0.1:8335:e3e1f3e8`
+  # This must be specified using the same format as `CHAINGRAPH_TRUSTED_NODES`, e.g. `bchn:127.0.0.1:8333:mainnet,bchd:127.0.0.1:8334:testnet,another:127.0.0.1:8335:e3e1f3e8`
   externalNodes: ''
   # User-Agent string to share with trusted nodes. If not set, the default `/chaingraph:[version]/` will be used.
   # e.g. CHAINGRAPH_USER_AGENT=/chaingraph-custom:0.0.0/
@@ -22,7 +22,7 @@ agent:
   # A mapping of network magic bytes to hex-encoded genesis blocks.
   # Format: `NETWORK_MAGIC:RAW_GENESIS_BLOCK_HEX`, comma separated.
   # E.g. CHAINGRAPH_GENESIS_BLOCKS=e3e1f3e8:rawblockhex,deadbeef:rawblockhex
-  genesisBlocks: 'e3e1f3e8:0100000000000000000000000000000000000000000000000000000000000000000000003ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a29ab5f49ffff001d1dac2b7c0101000000010000000000000000000000000000000000000000000000000000000000000000ffffffff4d04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73ffffffff0100f2052a01000000434104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac00000000,dab5bffa:0100000043497fd7f826957108f4a30fd9cec3aeba79972084e90ead01ea330900000000bac8b0fa927c0ac8234287e33c5f74d38d354820e24756ad709d7038fc5f31f020e7494dffff001d03e4b6720101000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0e0420e7494d017f062f503253482fffffffff0100f2052a010000002321021aeaf2f8638a129a3156fbe7e5ef635226b0bafd495ff03afe2c843d7e3a4b51ac00000000'
+  genesisBlocks: 'e3e1f3e8:0100000000000000000000000000000000000000000000000000000000000000000000003ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a29ab5f49ffff001d1dac2b7c0101000000010000000000000000000000000000000000000000000000000000000000000000ffffffff4d04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73ffffffff0100f2052a01000000434104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac00000000,dab5bffa:0100000043497fd7f826957108f4a30fd9cec3aeba79972084e90ead01ea330900000000bac8b0fa927c0ac8234287e33c5f74d38d354820e24756ad709d7038fc5f31f020e7494dffff001d03e4b6720101000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0e0420e7494d017f062f503253482fffffffff0100f2052a010000002321021aeaf2f8638a129a3156fbe7e5ef635226b0bafd495ff03afe2c843d7e3a4b51ac00000000,e2b7daaf:0100000000000000000000000000000000000000000000000000000000000000000000003ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4af1a93c5fffff001d01d3cd060101000000010000000000000000000000000000000000000000000000000000000000000000ffffffff4d04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73ffffffff0100f2052a01000000434104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac00000000'
   # The port on which the health check and process monitoring metrics should be served.
   port: 3200
   # The minimum log level to print to STDOUT. May be `trace`, `debug`, `info`, `warn`, `error`, or `fatal`.
@@ -33,7 +33,7 @@ bitcoinCashNode:
   # Enable a local Bitcoin Cash Node.
   enable: true
   # The precise Bitcoin Cash Node Docker image to use.
-  image: chaingraph/bitcoin-cash-node@sha256:c0a8d24cdbd5d5f25b0793314a0a2a8336e51b4a0b4457f39c9c95cdae6b90bb # v23.1.0
+  image: chaingraph/bitcoin-cash-node@sha256:4d4224c315052ad8fe2821e73aa950f98e039ed1afad0939df6862ca3d548f04 # v23.1.0
   # The size of the volume to provision for Bitcoin Cash Node.
   volumeSize:  210Gi
 
@@ -55,7 +55,7 @@ postgres:
   externalDbUrl: ''
   # The precise Postgres Docker image to use.
   # This is only used if `externalPostgresDbUrl` is not set.
-  image: postgres@sha256:c83014a2b46834ef6d17f64c8e4a70089901a8c0dee158f1ca5ccae032ea32e5 # v13.2
+  image: postgres@sha256:f5b88e89628de59e0cd28b25d7c26ac2f43fdd235c7263aa98ff971898fe9c5f # v14.0
   # The Postgres username to use.
   # NOTE: this can only be configured from the chart during database creation. If the database already exists, the postgres username/password must be created or updated manually before changing this value.
   # This is only used if `externalPostgresDbUrl` is not set.

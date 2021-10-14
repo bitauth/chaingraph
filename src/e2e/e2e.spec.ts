@@ -17,7 +17,11 @@ import type {
   GetHeadersMessage,
   Peer,
 } from '@chaingraph/bitcore-p2p-cash';
-import { BitcoreInventoryType, Pool } from '@chaingraph/bitcore-p2p-cash';
+import {
+  BitcoreInventoryType,
+  internalBitcore,
+  Pool,
+} from '@chaingraph/bitcore-p2p-cash';
 import type { Macro } from 'ava';
 import test from 'ava';
 import execa from 'execa';
@@ -63,6 +67,7 @@ const chaingraphHealthCheckPort = '3200';
 const e2eTestNetworkMagic = Buffer.from(utf8ToBin('grph').map((x) => x | 128));
 /* eslint-enable no-bitwise, @typescript-eslint/no-magic-numbers */
 const e2eTestNetworkMagicHex = e2eTestNetworkMagic.toString('hex');
+const e2eTestNetworkMagicAsNum = parseInt(e2eTestNetworkMagicHex, 16);
 const e2eTestNetworkNode1Port = 19333;
 const e2eTestNetworkNode2Port = 19334;
 const e2eTestNetworkNode3Port = 19335;
@@ -77,33 +82,40 @@ const e2eTrustedNodesSet1 = `node1:127.0.0.1:${e2eTestNetworkNode1Port}:${e2eTes
 
 const e2eTrustedNodesSet2 = `node1:127.0.0.1:${e2eTestNetworkNode1Port}:${e2eTestNetworkMagicHex},node2:127.0.0.1:${e2eTestNetworkNode2Port}:${e2eTestNetworkMagicHex},node4:127.0.0.1:${e2eTestNetworkNode3Port}:${e2eTestNetworkMagicHex}`;
 
+internalBitcore.Networks.add({
+  name: 'node1net',
+  networkMagic: e2eTestNetworkMagicAsNum,
+  port: e2eTestNetworkNode1Port,
+});
+internalBitcore.Networks.add({
+  name: 'node2net',
+  networkMagic: e2eTestNetworkMagicAsNum,
+  port: e2eTestNetworkNode2Port,
+});
+internalBitcore.Networks.add({
+  name: 'node3net',
+  networkMagic: e2eTestNetworkMagicAsNum,
+  port: e2eTestNetworkNode3Port,
+});
+
 const node1 = new Pool({
-  customNetwork: {
-    networkMagic: e2eTestNetworkMagic,
-    port: e2eTestNetworkNode1Port,
-  },
   dnsSeed: false,
   listenAddr: false,
+  network: 'node1net',
   subversion: node1UserAgent,
   version: node1Version,
 });
 const node2 = new Pool({
-  customNetwork: {
-    networkMagic: e2eTestNetworkMagic,
-    port: e2eTestNetworkNode2Port,
-  },
   dnsSeed: false,
   listenAddr: false,
+  network: 'node2net',
   subversion: node2UserAgent,
   version: node2Version,
 });
 const node3 = new Pool({
-  customNetwork: {
-    networkMagic: e2eTestNetworkMagic,
-    port: e2eTestNetworkNode3Port,
-  },
   dnsSeed: false,
   listenAddr: false,
+  network: 'node3net',
   subversion: node3UserAgent,
   version: node3Version,
 });

@@ -159,21 +159,28 @@ const networkMagicBchMainnet = Uint8Array.from([0xe3, 0xe1, 0xf3, 0xe8]);
  * `0xdab5bffa` (origin currently unknown)
  */
 // eslint-disable-next-line @typescript-eslint/no-magic-numbers
-const networkMagicBchTestnet = Uint8Array.from([0xda, 0xb5, 0xbf, 0xfa]);
+const networkMagicBchTestnet3 = Uint8Array.from([0xda, 0xb5, 0xbf, 0xfa]);
+/**
+ * `0xe2b7daaf` (origin currently unknown)
+ */
+// eslint-disable-next-line @typescript-eslint/no-magic-numbers
+const networkMagicBchTestnet4 = Uint8Array.from([0xe2, 0xb7, 0xda, 0xaf]);
 // eslint-disable-next-line complexity
 const validateNetworkMagic = (input: string) => {
   const magicBytes =
-    input === 'main'
+    input === 'mainnet'
       ? networkMagicBchMainnet
-      : input === 'test'
-      ? networkMagicBchTestnet
+      : input === 'testnet' || input === 'testnet4'
+      ? networkMagicBchTestnet4
+      : input === 'testnet3'
+      ? networkMagicBchTestnet3
       : isHex(input) && input.length === networkMagicHexLength
       ? hexToBin(input)
       : undefined;
   if (magicBytes === undefined) {
     // eslint-disable-next-line functional/no-throw-statement
     throw new Error(
-      'Improperly formatted network magic bytes. Must be `main`, `test`, or 4 hex-encoded bytes, e.g. `e3e1f3e8`.'
+      'Improperly formatted network magic bytes. Must be `mainnet`, `testnet`, or 4 hex-encoded bytes, e.g. `e3e1f3e8`.'
     );
   }
   return binToHex(magicBytes);
@@ -218,7 +225,7 @@ Invalid segment: ${entry}`
  * NETWORK may be provided as `main` (0xe3e1f3e8), `test` (0xdab5bffa), or 4
  * hex-encoded "magic bytes", e.g. `e3e1f3e8`.
  *
- * E.g. `TRUSTED_NODES=bchn:127.0.0.1:8333:main,bchd:127.0.0.1:8334:main`
+ * E.g. `TRUSTED_NODES=bchn:127.0.0.1:8333:mainnet,bchd:127.0.0.1:8334:testnet`
  */
 const trustedNodes = configuration.CHAINGRAPH_TRUSTED_NODES.split(',').map(
   (node) => {
@@ -243,7 +250,7 @@ const trustedNodes = configuration.CHAINGRAPH_TRUSTED_NODES.split(',').map(
         `Improperly formatted 'CHAINGRAPH_TRUSTED_NODES' environment variable.
 
 Expected format: NODE_NAME:HOST:PORT_NUMBER:NETWORK,NODE_NAME:HOST:PORT_NUMBER:NETWORK,...
-E.g.: TRUSTED_NODES=bchn:127.0.0.1:8333:main,bchd:127.0.0.1:8334:e3e1f3e8
+E.g.: TRUSTED_NODES=bchn:127.0.0.1:8333:mainnet,bchd:127.0.0.1:8334:e3e1f3e8
 
 Invalid segment: ${node}`
       );
@@ -252,7 +259,7 @@ Invalid segment: ${node}`
       /**
        * The IP address of this trusted node.
        */
-      ip: host,
+      host,
       /**
        * The name of this trusted node – used as a stable identifier between
        * restarts.
@@ -283,6 +290,7 @@ if (isNaN(chaingraphHealthCheckPort)) {
 
 /**
  * Can be overridden via the `CHAINGRAPH_USER_AGENT` environment variable.
+ * TODO: use docker image tag (git commit short digest) from an environment variable for tagged images (passed in by kubernetes), or `dev-build` if not a production image
  */
 const chaingraphUserAgent =
   configuration.CHAINGRAPH_USER_AGENT === ''

@@ -242,10 +242,10 @@
   resolved "https://registry.yarnpkg.com/@bitauth/libauth/-/libauth-1.18.1.tgz#b1c632ed85f73c16a0ff89d81e8a92809fa15108"
   integrity sha512-s7evdGbdGAnGkv7xt6mCbcWTTNvburc1Z9EX/8JKwcRLqofjDs7VAEz+RP3a8OGEo4MWFV6Ydqu/BeJjIA7Kdg==
 
-"@chaingraph/bitcore-p2p-cash@^9.0.1":
-  version "9.0.1"
-  resolved "https://registry.yarnpkg.com/@chaingraph/bitcore-p2p-cash/-/bitcore-p2p-cash-9.0.1.tgz#9048bd29b3048e91171f2852277603c4b5a82d63"
-  integrity sha512-hUgj4cKBz73mOJhN3AmA784aCM+/JyzcjwbA1N/6wake3wpuNVoTsQTckP7UtUA3KoXsBYbbNO1CGGJmfMJ+Rw==
+"@chaingraph/bitcore-p2p-cash@^9.0.2":
+  version "9.0.2"
+  resolved "https://registry.yarnpkg.com/@chaingraph/bitcore-p2p-cash/-/bitcore-p2p-cash-9.0.2.tgz#73879396f9eda3f39824466cae8ee4ffed50496e"
+  integrity sha512-AEaU1ddJhCJj8qU0jDNM63w/bMqzEZqUSvun2acxfgCeYUJmyabBVG8RF/UZn+57KD2QPmzyYC0GlAhBrO1+JQ==
   dependencies:
     bitcore-lib "^8.25.10"
     bitcore-lib-cash "^8.25.10"

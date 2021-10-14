@@ -7,7 +7,7 @@ metadata:
     app: postgres
     {{- include "chaingraph.labels" . | nindent 4 }}
 spec:
-  serviceName: "postgres-service"
+  serviceName: postgres-service
   replicas: 1
   selector:
     matchLabels:
@@ -30,10 +30,11 @@ spec:
       containers:
       - name: postgres
         image: {{ .Values.postgres.image }}
-        resources:
-          requests:
-            memory: "{{ .Values.postgres.memoryGb }}Gi"
-            cpu: "{{ .Values.postgres.cpus }}"
+        # TODO: this is not a great way to ensure postgres is assigned to the cluster's best node (results in higher bills on cloud providers). Need a better strategy.
+        # resources:
+          # requests:
+          #   memory: "{{ .Values.postgres.memoryGb }}Gi"
+          #   cpu: "{{ .Values.postgres.cpus }}"
         env:
           - name: PGDATA
             value: /data
@@ -53,7 +54,7 @@ spec:
           - name: POSTGRES_HOST_AUTH_METHOD
             value: scram-sha-256
           - name: POSTGRES_INITDB_ARGS
-            value: --auth-host=scram-sha-256
+            value: --auth=scram-sha-256
         livenessProbe:
           exec:
             command: ["/bin/sh", "-c", "exec pg_isready -U chaingraph -d chaingraph -h 127.0.0.1 -p 5432"]

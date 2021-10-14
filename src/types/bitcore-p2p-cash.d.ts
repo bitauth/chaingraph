@@ -8,7 +8,11 @@ declare module '@chaingraph/bitcore-p2p-cash' {
     Block,
     Transaction,
   } from 'bitcore-lib-cash';
+  import type bitcoreModule from 'bitcore-lib-cash';
   import type StrictEventEmitter from 'strict-event-emitter-types';
+
+  // eslint-disable-next-line @typescript-eslint/init-declarations
+  export const internalBitcore: typeof bitcoreModule;
 
   export type {
     BitcoreBlockHeader,
@@ -122,8 +126,7 @@ declare module '@chaingraph/bitcore-p2p-cash' {
 
     constructor(config: {
       host?: string;
-      customNetwork?: { networkMagic: Buffer; port: number };
-      network?: { networkMagic: Buffer };
+      network?: string;
       port?: number;
       relay?: boolean;
       subversion?: string;
@@ -145,8 +148,7 @@ declare module '@chaingraph/bitcore-p2p-cash' {
       dnsSeed?: boolean;
       listenAddr?: boolean;
       maxSize?: number;
-      customNetwork?: { networkMagic: Buffer; port: number };
-      network?: { networkMagic: Buffer; port: number };
+      network?: string;
       relay?: boolean;
       subversion?: string;
       version?: number;

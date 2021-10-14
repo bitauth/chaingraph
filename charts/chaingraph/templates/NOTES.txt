@@ -1,6 +1,8 @@
 These notes provide important details about your Chaingraph configuration, consider saving them for future reference.
 
 --- Management Tips ---
+List my kubernetes clusters: $ kubectl config get-contexts
+Useful info: $ kubectl cluster-info
 View status of pods: $ kubectl get pods
 Get pod details: $ kubectl describe pod hasura
 Tail pod logs: $ kubectl logs -f bitcoin-cash-node-0
