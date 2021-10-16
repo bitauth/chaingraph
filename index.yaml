@@ -3,6 +3,16 @@ entries:
   chaingraph:
   - apiVersion: v2
     appVersion: 1.0.0
+    created: "2021-10-16T04:18:28.996890828Z"
+    description: A multi-node blockchain indexer and GraphQL API.
+    digest: 44df625a9a588a0d61068cb6df8ec5423f1a887017ea1a834358460042af6b55
+    name: chaingraph
+    type: application
+    urls:
+    - https://github.com/bitauth/chaingraph/releases/download/chaingraph-0.2.4/chaingraph-0.2.4.tgz
+    version: 0.2.4
+  - apiVersion: v2
+    appVersion: 1.0.0
     created: "2021-10-14T04:30:18.765513168Z"
     description: A multi-node blockchain indexer and GraphQL API.
     digest: 154ee04a038cb5e5709e632d41544a7425e38b699ac6cf3a97b5354775e86fe3
@@ -51,4 +61,4 @@ entries:
     urls:
     - https://github.com/bitauth/chaingraph/releases/download/chaingraph-0.1.0/chaingraph-0.1.0.tgz
     version: 0.1.0
-generated: "2021-10-14T04:30:18.765934973Z"
+generated: "2021-10-16T04:18:28.996913328Z"
