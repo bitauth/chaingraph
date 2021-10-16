@@ -98,6 +98,12 @@ const msPerSecond = 1000;
 const blockTimestampToDate = (timestamp: number) =>
   new Date(timestamp * msPerSecond);
 
+const twoHoursAgo = () => {
+  // eslint-disable-next-line @typescript-eslint/no-magic-numbers
+  const twoHours = 2 * 60 * 60 * msPerSecond;
+  return new Date(Date.now() - twoHours);
+};
+
 /**
  * The interval at which the agent's general status is logged (a variety of
  * syncing state and performance statistics).
@@ -629,9 +635,7 @@ export class Agent {
    * See `checkInitialization` for details.
    */
   scheduleBlockBufferFill() {
-    logger.trace('Attempting to schedule BlockBuffer fill.');
     if (!this.scheduledBlockBufferFill) {
-      logger.trace('Block buffer fill scheduled.');
       setImmediate(() => {
         this.scheduledBlockBufferFill = false;
         if (this.successfullyInitialized) {
@@ -665,7 +669,13 @@ export class Agent {
           if (
             !this.completedInitialSync &&
             this.blockBuffer.count() === 0 &&
-            Object.values(this.nodes).every((node) => node.headersSynced)
+            Object.values(this.nodes).every(
+              (node) =>
+                node.headersSynced &&
+                node.syncState?.latestSyncedBlockTime !== undefined &&
+                (node.syncState.latestSyncedBlockTime === 'caught-up' ||
+                  node.syncState.latestSyncedBlockTime > twoHoursAgo())
+            )
           ) {
             this.completedInitialSync = true;
             logger.info(`Agent: initial sync is complete.`);
@@ -792,7 +802,7 @@ export class Agent {
           leastSyncedChain.nodeName
         }: ${leastSyncedChain.pendingHeight}/${
           leastSyncedChain.bestHeight
-        } (${renderSyncPercentage(leastSyncedChain.syncPercentage)})%`
+        } (${renderSyncPercentage(leastSyncedChain.syncPercentage)}%)`
       );
       return false;
     }
@@ -866,7 +876,7 @@ export class Agent {
             `${nodeName}: accepted ${acceptedBlocks.length} existing blocks from height ${acceptedBlocks[0].height} to height ${lastAcceptedBlock.height} (hash: ${lastAcceptedBlock.hash})`
           );
           acceptedBlocks.forEach((block) => {
-            syncState.markHeightAsSynced(block.height);
+            syncState.markHeightAsSynced(block.height, 'caught-up');
           });
           this.scheduleBlockBufferFill();
         })
@@ -1054,6 +1064,11 @@ export class Agent {
     this.blockBuffer.releaseReservedBlock();
     const durationMs = finishedDownloadAt - download.requestStartTime;
     this.scheduleBlockParse(bitcoreBlock, download.height, (block) => {
+      if (durationMs < 0) {
+        logger.error(
+          `download stats issue - durationMs: ${durationMs}, finishedDownloadAt: ${finishedDownloadAt} download.requestStartTime: ${download.requestStartTime}`
+        );
+      }
       this.nodes[nodeName].downloadThroughput.addStatistic({
         durationMs: durationMs === 0 ? 1 : durationMs,
         metrics: { bytes: block.sizeBytes },
@@ -1124,10 +1139,7 @@ export class Agent {
       block.height
     );
 
-    // eslint-disable-next-line @typescript-eslint/no-magic-numbers
-    const twoHours = 2 * 60 * 60 * msPerSecond;
     const blockTime = blockTimestampToDate(block.timestamp);
-    const twoHoursAgo = new Date(Date.now() - twoHours);
     /**
      * We only begin recording block times once Chaingraph has "caught up"
      * with the chain. Blocks not accepted "live" are given an `accepted_at`
@@ -1142,7 +1154,7 @@ export class Agent {
      * before Chaingraph's initial sync is complete, but other than this
      * ~12 block window, `accepted_at` times are expected to be accurate.
      */
-    const acceptedAt = blockTime > twoHoursAgo ? firstAcceptedAt : null;
+    const acceptedAt = blockTime > twoHoursAgo() ? firstAcceptedAt : null;
     const nodeAcceptances = acceptedBy
       .map((nodeName) => ({
         acceptedAt,
@@ -1173,6 +1185,11 @@ export class Agent {
     const completionTime = Date.now();
 
     const durationMs = completionTime - startTime;
+    if (durationMs < 0) {
+      logger.error(
+        `db stats issue - durationMs: ${durationMs}, startTime: ${startTime} completionTime: ${completionTime}`
+      );
+    }
     const transactions = attemptedSavedTransactions.length;
     const inputs = attemptedSavedTransactions.reduce(
       (total, tx) => total + tx.inputs.length,
@@ -1220,7 +1237,10 @@ export class Agent {
 
     nodeAcceptances.forEach((acceptance) => {
       const { syncState } = this.nodes[acceptance.nodeName];
-      syncState!.markHeightAsSynced(block.height);
+      syncState!.markHeightAsSynced(
+        block.height,
+        blockTimestampToDate(block.timestamp)
+      );
     });
     this.blockBuffer.removeBlock(block);
   }
@@ -1365,6 +1385,9 @@ export class Agent {
       const bestHeights = this.blockTree.getBestHeights();
       const downloadStatsByNode = this.getDownloadCountByNode();
 
+      // eslint-disable-next-line functional/no-let
+      let logOutput = '';
+
       const decimalPlaces = 2;
       Object.keys(this.nodes).forEach((nodeName) => {
         const node = this.nodes[nodeName];
@@ -1375,98 +1398,94 @@ export class Agent {
 
         const pendingHeight = syncState.getPendingSyncHeight();
         const bestHeight = bestHeights[nodeName];
-        logger.info(
-          `Syncing ${nodeName} – completed height: ${
-            syncState.fullySyncedUpToHeight
-          } | pending: ${pendingHeight} (${renderSyncPercentage(
-            pendingHeight / bestHeight
-          )}%) | best: ${bestHeight}`
-        );
+        const blockTime =
+          syncState.latestSyncedBlockTime === undefined ||
+          syncState.latestSyncedBlockTime === 'caught-up'
+            ? 'n/a'
+            : syncState.latestSyncedBlockTime.toISOString();
+        logOutput += `Syncing ${nodeName} – completed height: ${
+          syncState.fullySyncedUpToHeight
+        } | completed block time: ${blockTime} | pending height: ${pendingHeight} (${renderSyncPercentage(
+          pendingHeight / bestHeight
+        )}%) | best height: ${bestHeight} \n `;
+
         const pendingDownloads = downloadStatsByNode[nodeName] ?? 0;
         const downloadStats = node.downloadThroughput.aggregateStatistics(
           Date.now()
         );
 
-        logger.debug(
-          `${nodeName}: Downloads – pending: ${pendingDownloads} | avg: ${formatByteThroughput(
-            downloadStats.average.perActiveSecond.bytes,
-            msPerSecond
-          )} (last 300s – completed: ${
-            downloadStats.statisticsCount
-          } | avg duration: ${downloadStats.average.duration.toFixed(
-            decimalPlaces
-          )}ms | avg concurrency: ${downloadStats.average.concurrency.toFixed(
-            decimalPlaces
-          )} | total: ${formatBytes(downloadStats.totals.bytes)})`
-        );
+        logOutput += `${nodeName}: Downloads – pending: ${pendingDownloads} | avg: ${formatByteThroughput(
+          downloadStats.average.perActiveSecond.bytes,
+          msPerSecond
+        )} (last 300s – completed: ${
+          downloadStats.statisticsCount
+        } | avg duration: ${downloadStats.average.duration.toFixed(
+          decimalPlaces
+        )}ms | avg concurrency: ${downloadStats.average.concurrency.toFixed(
+          decimalPlaces
+        )} | total: ${formatBytes(downloadStats.totals.bytes)}) \n `;
       });
 
       const loadDecimalPlaces = 3;
-      logger.debug(
-        `PG Pool – idle: ${pool.idleCount}/${
-          pool.totalCount
-        } | waiting requests: ${
-          pool.waitingCount
-        } (concurrency: ${postgresMaxConnections}) | system load avg: ${loadavg()
-          .map((load) => load.toFixed(loadDecimalPlaces))
-          .join(', ')} (${cpus().length} CPUs)`
-      );
+
+      logOutput += `PG Pool – idle: ${pool.idleCount}/${
+        pool.totalCount
+      } | waiting requests: ${
+        pool.waitingCount
+      } (concurrency: ${postgresMaxConnections}) | system load avg: ${loadavg()
+        .map((load) => load.toFixed(loadDecimalPlaces))
+        .join(', ')} (${cpus().length} CPUs) \n `;
 
       const now = Date.now();
       const txThroughput = this.databaseThroughput.aggregateStatistics(now);
       const blockThroughput =
         this.databaseBlockThroughput.aggregateStatistics(now);
-      logger.debug(
-        `block throughput – ${formatByteThroughput(
-          blockThroughput.average.perActiveSecond.blockBytes,
-          msPerSecond
-        )} – ${blockThroughput.average.perActiveSecond.blocks.toFixed(
-          decimalPlaces
-        )} blocks/s – avg concurrency: ${Math.round(
-          blockThroughput.average.concurrency
-        ).toFixed(decimalPlaces)} | duration: ${Math.round(
-          blockThroughput.average.duration
-        )}ms (last 300s – ${
-          blockThroughput.totals.blocks
-        } blocks | bytes: ${formatBytes(
-          blockThroughput.totals.blockBytes
-        )} | TX cache misses: ${
-          blockThroughput.totals.transactionCacheMisses
-        } )`
-      );
 
-      logger.debug(
-        `tx throughput – ${formatByteThroughput(
-          txThroughput.average.perActiveSecond.transactionBytes,
-          msPerSecond
-        )} – ${Math.round(
-          txThroughput.average.perActiveSecond.transactions
-        )} tx/s | ${Math.round(
-          txThroughput.average.perActiveSecond.inputs
-        )} in/s | ${Math.round(
-          txThroughput.average.perActiveSecond.outputs
-        )} out/s – avg concurrency: ${Math.round(
-          txThroughput.average.concurrency
-        ).toFixed(decimalPlaces)} | duration: ${Math.round(
-          txThroughput.average.duration
-        )}ms (last 300s – ${txThroughput.totals.transactions} txs | ${
-          txThroughput.totals.inputs
-        } inputs | ${
-          txThroughput.totals.outputs
-        } outputs | bytes: ${formatBytes(
-          txThroughput.totals.transactionBytes
-        )})`
-      );
+      logOutput += `block throughput – ${formatByteThroughput(
+        blockThroughput.average.perActiveSecond.blockBytes,
+        msPerSecond
+      )} – ${blockThroughput.average.perActiveSecond.blocks.toFixed(
+        decimalPlaces
+      )} blocks/s – avg concurrency: ${Math.round(
+        blockThroughput.average.concurrency
+      ).toFixed(decimalPlaces)} | duration: ${Math.round(
+        blockThroughput.average.duration
+      )}ms (last 300s – ${
+        blockThroughput.totals.blocks
+      } blocks | bytes: ${formatBytes(
+        blockThroughput.totals.blockBytes
+      )} | TX cache misses: ${
+        blockThroughput.totals.transactionCacheMisses
+      } ) \n `;
 
-      logger.debug(
-        `Block buffer – count: ${this.blockBuffer.count()} | size: ${formatBytes(
-          this.blockBuffer.currentTotalBytes()
-        )} | target: ${formatBytes(
-          this.blockBuffer.targetSizeBytes
-        )} | Block DB hashes: ${
-          this.blockDb?.size ?? 0
-        } – transaction DB hashes: ${this.transactionCache.length}`
-      );
+      logOutput += `tx throughput – ${formatByteThroughput(
+        txThroughput.average.perActiveSecond.transactionBytes,
+        msPerSecond
+      )} – ${Math.round(
+        txThroughput.average.perActiveSecond.transactions
+      )} tx/s | ${Math.round(
+        txThroughput.average.perActiveSecond.inputs
+      )} in/s | ${Math.round(
+        txThroughput.average.perActiveSecond.outputs
+      )} out/s – avg concurrency: ${Math.round(
+        txThroughput.average.concurrency
+      ).toFixed(decimalPlaces)} | duration: ${Math.round(
+        txThroughput.average.duration
+      )}ms (last 300s – ${txThroughput.totals.transactions} txs | ${
+        txThroughput.totals.inputs
+      } inputs | ${txThroughput.totals.outputs} outputs | bytes: ${formatBytes(
+        txThroughput.totals.transactionBytes
+      )}) \n `;
+
+      logOutput += `Block buffer – count: ${this.blockBuffer.count()} | size: ${formatBytes(
+        this.blockBuffer.currentTotalBytes()
+      )} | target: ${formatBytes(
+        this.blockBuffer.targetSizeBytes
+      )} | Block DB hashes: ${
+        this.blockDb?.size ?? 0
+      } – transaction DB hashes: ${this.transactionCache.length} \n`;
+
+      logger.info(logOutput);
     }
   }
 

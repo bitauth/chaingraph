@@ -97,3 +97,5 @@ test('computeIndexCreationProgress: multiple indexes', async (t) => {
     ['spent_by_index', '30'],
   ]);
 });
+
+test.todo('computeIndexCreationProgress: never produces NaN when a total is 0');

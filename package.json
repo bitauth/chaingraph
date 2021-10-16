@@ -14,7 +14,7 @@
     "dev-cluster:init:base": "yarn dev-cluster:create && yarn image:build:hasura && yarn dev-cluster:images:load:hasura",
     "dev-cluster:init:local": "yarn dev-cluster:init:base && yarn dev-cluster:upgrade:local",
     "dev-cluster:init:local-node": "yarn dev-cluster:init:base && yarn dev-cluster:upgrade:local-node",
-    "dev-cluster:init:prod-sim": "yarn dev-cluster:init:base && yarn image:build:hasura && yarn dev-cluster:images:load:hasura && yarn image:build:agent && yarn dev-cluster:images:load:agent && yarn image:build:bchn && yarn dev-cluster:images:load:bchn && yarn dev-cluster:upgrade:prod-sim",
+    "dev-cluster:init:prod-sim": "yarn dev-cluster:init:base && yarn image:build:agent && yarn dev-cluster:images:load:agent && yarn image:build:bchn && yarn dev-cluster:images:load:bchn && yarn dev-cluster:upgrade:prod-sim",
     "dev-cluster:start": "k3d cluster start chaingraph-development-cluster",
     "dev-cluster:stop": "k3d cluster stop chaingraph-development-cluster",
     "dev-cluster:reset": "yarn dev-cluster:destroy && yarn dev-cluster:init",

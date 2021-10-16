@@ -24,13 +24,46 @@ export class SyncState {
 
   additionalSyncedHeights: number[];
 
+  /**
+   * The block time claimed by the latest synced block. Chaingraph assumes the
+   * trusted node is itself not fully-synced if this time is older than 2 hours
+   * (the consensus limit beyond which an inaccurate block time would render the
+   * block invalid).
+   *
+   * As this value is used to estimate the sync progress of the trusted node, it
+   * is not affected by block reorganizations.
+   *
+   * A value of 'caught-up' indicates to chaingraph that this node is not
+   * actively syncing an unknown chain tip, and the sync state of this node can
+   * be ignored when checking for initial sync completion.
+   *
+   * A value of undefined indicates that this node has 1) not been synced
+   * before, and 2) not yet successfully saved a block, so initial sync is not
+   * complete.
+   *
+   * TODO: if other nodes were previously fully synced, initial sync should be skipped by default (to continue service for those nodes while the new node syncs)
+   */
+  latestSyncedBlockTime: Date | 'caught-up' | undefined;
+
   constructor(initialState: InitialSyncState) {
     this.fullySyncedUpToHeight = initialState.fullySyncedUpToHeight;
     this.pendingSyncOfHeights = initialState.pendingSyncOfHeights.slice();
     this.additionalSyncedHeights = initialState.additionalSyncedHeights.slice();
+    this.latestSyncedBlockTime =
+      initialState.fullySyncedUpToHeight > 0 ? 'caught-up' : undefined;
   }
 
-  markHeightAsSynced(height: number) {
+  // eslint-disable-next-line complexity
+  markHeightAsSynced(height: number, claimedBlockTime: Date | 'caught-up') {
+    if (claimedBlockTime === 'caught-up') {
+      this.latestSyncedBlockTime = 'caught-up';
+    } else if (
+      this.latestSyncedBlockTime === undefined ||
+      this.latestSyncedBlockTime < claimedBlockTime
+    ) {
+      this.latestSyncedBlockTime = claimedBlockTime;
+    }
+
     if (
       this.fullySyncedUpToHeight < height &&
       !this.additionalSyncedHeights.includes(height)
