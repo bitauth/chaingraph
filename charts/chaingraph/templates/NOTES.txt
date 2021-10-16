@@ -1,6 +1,7 @@
 These notes provide important details about your Chaingraph configuration, consider saving them for future reference.
 
 --- Management Tips ---
+View release info (including these notes): $ helm status {{ .Release.Name }}
 List my kubernetes clusters: $ kubectl config get-contexts
 Useful info: $ kubectl cluster-info
 View status of pods: $ kubectl get pods
@@ -119,6 +120,6 @@ Then visit: http://localhost:8082/
 :                             |___/          |_|             :
 :............................................................:
 
-Chaingraph was installed successfully 🚀
+Chaingraph version {{ .Chart.Version }} was installed successfully 🚀
 
 Above are some notes about your configuration. You may want to copy and save these notes for future reference.

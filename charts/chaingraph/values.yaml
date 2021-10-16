@@ -8,7 +8,7 @@ agent:
   # Manage the Chaingraph agent from this chart.
   enable: true
   # The precise Chaingraph Agent Docker image to use.
-  image: chaingraph/agent@sha256:5c372663416b40ac43b34c906a6fa9335c421a229e1b79543c8581c425f34d99 # d55dfba
+  image: chaingraph/agent@sha256:1951cc1c822833fc81f4a5891fe80de73aefdedcf19549fc69adf337201b9341 # ec075b3
   # A list of trusted external nodes to which this Chaingraph instance should connect. If specified, this list will be appended to the list of trusted nodes which are managed by this Chaingraph chart.
   # This must be specified using the same format as `CHAINGRAPH_TRUSTED_NODES`, e.g. `bchn:127.0.0.1:8333:mainnet,bchd:127.0.0.1:8334:testnet,another:127.0.0.1:8335:e3e1f3e8`
   externalNodes: ''
@@ -66,7 +66,7 @@ postgres:
   password: ''
   # The size of the volume to provision for the internal Postgres database.
   # This is only used if `externalPostgresDbUrl` is not set.
-  volumeSize: 520Gi
+  volumeSize: 600Gi
   # The memory available to the kubernetes node intended for running the Postgres database (ideally, the highest-resource node in the cluster).
   # This is only used if `externalPostgresDbUrl` is not set.
   memoryGb: 1

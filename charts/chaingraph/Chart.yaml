@@ -2,5 +2,5 @@ apiVersion: v2
 name: chaingraph
 description: A multi-node blockchain indexer and GraphQL API.
 type: application
-version: 0.2.3
+version: 0.2.4
 appVersion: 1.0.0
