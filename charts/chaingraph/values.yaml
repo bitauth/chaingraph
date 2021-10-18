@@ -8,7 +8,7 @@ agent:
   # Manage the Chaingraph agent from this chart.
   enable: true
   # The precise Chaingraph Agent Docker image to use.
-  image: chaingraph/agent@sha256:1951cc1c822833fc81f4a5891fe80de73aefdedcf19549fc69adf337201b9341 # ec075b3
+  image: chaingraph/agent@sha256:cebdfa7a235e2128d1daf43b065380ed124fdc880ef48bf61ef389b9bca0c87d # 1f01fa6
   # A list of trusted external nodes to which this Chaingraph instance should connect. If specified, this list will be appended to the list of trusted nodes which are managed by this Chaingraph chart.
   # This must be specified using the same format as `CHAINGRAPH_TRUSTED_NODES`, e.g. `bchn:127.0.0.1:8333:mainnet,bchd:127.0.0.1:8334:testnet,another:127.0.0.1:8335:e3e1f3e8`
   externalNodes: ''
