@@ -1,4 +1,3 @@
-{{ $chaingraphPostgresPassword := include "chaingraph.postgresPassword"  . | quote }}
 {{- if .Values.agent.enable }}
 apiVersion: apps/v1
 kind: Deployment
