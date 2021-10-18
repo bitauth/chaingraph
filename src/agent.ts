@@ -162,7 +162,7 @@ export class Agent {
   blockDownloads: {
     hash: string;
     height: number;
-    requestedFromNode: string;
+    requestedFromNode: string | undefined;
     requestStartTime: number;
     timeout: ReturnType<typeof setTimeout>;
   }[] = [];
@@ -894,6 +894,8 @@ export class Agent {
    * downloads across all available nodes while still biasing downloads toward
    * the fastest connection.
    *
+   * Nodes which are currently disconnected are excluded from the list.
+   *
    * @param nodeNames - the list of nodes to sort
    */
   orderNodesByExpectedDownloadSpeed(nodeNames: string[]) {
@@ -913,6 +915,9 @@ export class Agent {
     });
     return expectedSpeeds
       .sort((a, b) => b.expectedSpeed - a.expectedSpeed)
+      .filter(({ nodeName }) => {
+        return this.nodes[nodeName].peer.status === 'ready';
+      })
       .map((s) => s.nodeName);
   }
 
@@ -920,7 +925,7 @@ export class Agent {
    * Request the specified block from the node expected to return it the
    * fastest.
    *
-   * TODO: avoid scheduling downloads from pruned nodes (and/or factor in pending downloads to expected speed)
+   * TODO: avoid scheduling downloads from pruned nodes
    * TODO: request block from a second node too? (Let them race, downloads are fast and cheap.)
    *
    * @param hash - the header hash of the block to request
@@ -937,22 +942,42 @@ export class Agent {
       );
       return;
     }
-    const [node] = this.orderNodesByExpectedDownloadSpeed(nodeNames);
-    logger.trace(`Requesting block ${height} (${hash}) from node: ${node}`);
+    const node = this.orderNodesByExpectedDownloadSpeed(nodeNames)[0] as
+      | string
+      | undefined;
+    if (node === undefined) {
+      logger.warn(
+        `Block ${height} (${hash}) is not available from any currently connected node. Will retry download in ${
+          downloadTimeout / msPerSecond
+        } seconds.`
+      );
+    } else {
+      logger.trace(`Requesting block ${height} (${hash}) from node: ${node}`);
+    }
     const download = {
       hash,
       height,
       requestStartTime: Date.now(),
       requestedFromNode: node,
       timeout: setTimeout(() => {
-        // TODO: how do pruned nodes respond? Do we get some indication that no response is coming back? (We should avoid asking for old blocks from pruned nodes)
+        if (node !== undefined) {
+          logger.warn(
+            `Agent: download from ${node} of block ${download.height} (${
+              download.hash
+            }) timed out after ${
+              downloadTimeout / msPerSecond
+            } seconds. Canceling and re-trying download.`
+          );
+        }
         this.clearDownload(download);
         this.requestBlock(download.hash, download.height);
       }, downloadTimeout),
     };
     this.blockDownloads.push(download);
-    const { peer } = this.nodes[node];
-    peer.sendMessage(peer.messages.GetData.forBlock(hash));
+    if (node !== undefined) {
+      const { peer } = this.nodes[node];
+      peer.sendMessage(peer.messages.GetData.forBlock(hash));
+    }
   }
 
   /**
@@ -1374,6 +1399,9 @@ export class Agent {
     return this.blockDownloads.reduce<{
       [nodeName: string]: number | undefined;
     }>((all, download) => {
+      if (download.requestedFromNode === undefined) {
+        return all;
+      }
       const last = all[download.requestedFromNode] ?? 0;
       return { ...all, [download.requestedFromNode]: last + 1 };
     }, {});
