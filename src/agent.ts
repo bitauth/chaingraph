@@ -497,6 +497,9 @@ export class Agent {
       });
 
       peer.on('inv', (message) => {
+        if (!this.completedInitialSync) {
+          return;
+        }
         message.inventory.forEach((inventoryItem) => {
           logger.trace(
             `${node.name}: inv message item - type: ${
