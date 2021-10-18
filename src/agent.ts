@@ -108,7 +108,7 @@ const twoHoursAgo = () => {
  * The interval at which the agent's general status is logged (a variety of
  * syncing state and performance statistics).
  */
-const loggingIntervalMs = 20_000;
+const heartbeatIntervalMs = 20_000;
 
 interface TransactionCacheItem {
   /**
@@ -221,7 +221,7 @@ export class Agent {
     };
   };
 
-  loggingInterval: NodeJS.Timeout;
+  heartbeatInterval: NodeJS.Timeout;
 
   scheduledBlockBufferFill = false;
 
@@ -269,9 +269,9 @@ export class Agent {
 
   constructor(config: { onShutdown: () => void }) {
     this.onShutdown = config.onShutdown;
-    this.loggingInterval = setInterval(() => {
-      this.logAgentStatus();
-    }, loggingIntervalMs);
+    this.heartbeatInterval = setInterval(() => {
+      this.agentHeartbeat();
+    }, heartbeatIntervalMs);
 
     this.blockTree = new BlockTree({
       genesisBlockByNode: trustedNodes.reduce(
@@ -1407,7 +1407,16 @@ export class Agent {
     }, {});
   }
 
-  logAgentStatus() {
+  /**
+   * A periodically executed method which logs agent status and requests any
+   * newly-validated headers during initial sync.
+   *
+   * Because trusted nodes might be simultaneously syncing the chain themselves,
+   * it's possible for Chaingraph to catch up to the currently validated tip for
+   * each node. When this occurs, Chaingraph will wait until the next heartbeat
+   * before requesting any newly available headers from that node.
+   */
+  agentHeartbeat() {
     // TODO: do we want any continuous logs after initial sync?
     if (!this.completedInitialSync) {
       const bestHeights = this.blockTree.getBestHeights();
@@ -1417,6 +1426,7 @@ export class Agent {
       let logOutput = '';
 
       const decimalPlaces = 2;
+      // eslint-disable-next-line complexity
       Object.keys(this.nodes).forEach((nodeName) => {
         const node = this.nodes[nodeName];
         const { syncState } = node;
@@ -1424,16 +1434,20 @@ export class Agent {
           return;
         }
 
+        const completedHeight = syncState.fullySyncedUpToHeight;
         const pendingHeight = syncState.getPendingSyncHeight();
         const bestHeight = bestHeights[nodeName];
+
+        if (syncState.fullySyncedUpToHeight === bestHeight) {
+          this.requestHeaders(nodeName);
+        }
+
         const blockTime =
           syncState.latestSyncedBlockTime === undefined ||
           syncState.latestSyncedBlockTime === 'caught-up'
             ? 'n/a'
             : syncState.latestSyncedBlockTime.toISOString();
-        logOutput += `Syncing ${nodeName} – completed height: ${
-          syncState.fullySyncedUpToHeight
-        } | completed block time: ${blockTime} | pending height: ${pendingHeight} (${renderSyncPercentage(
+        logOutput += `Syncing ${nodeName} – completed height: ${completedHeight} | completed block time: ${blockTime} | pending height: ${pendingHeight} (${renderSyncPercentage(
           pendingHeight / bestHeight
         )}%) | best height: ${bestHeight} \n `;
 
@@ -1524,7 +1538,7 @@ export class Agent {
       return this.shutdownPromise;
     }
     this.willShutdown = true;
-    clearInterval(this.loggingInterval);
+    clearInterval(this.heartbeatInterval);
     Object.values(this.nodes).forEach((connection) => {
       connection.disconnect();
     });
