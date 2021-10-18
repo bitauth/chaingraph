@@ -26,36 +26,6 @@ app.kubernetes.io/name: {{ include "chaingraph.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
-{{- define "chaingraph.hasuraAdminSecretKey" -}}
-  {{- if .Values.hasura.adminSecretKey -}}
-    {{ .Values.hasura.adminSecretKey }}
-  {{- else -}}
-    {{- $secret := (lookup "v1" "Secret" .Release.Namespace "chaingraph-secrets") -}}
-    {{- if $secret -}}
-      {{/* Reusing current key since secret exists */}}
-      {{-  $secret.data.adminSecretKey -}}
-    {{- else -}}
-      {{/* Generate new key */}}
-      {{- (randAlphaNum 64) -}}
-    {{- end -}}
-  {{- end -}}
-{{- end -}}
-
-{{- define "chaingraph.postgresPassword" -}}
-  {{- if .Values.postgres.password -}}
-    {{ .Values.postgres.password }}
-  {{- else -}}
-    {{- $secret := (lookup "v1" "Secret" .Release.Namespace "chaingraph-secrets") -}}
-    {{- if $secret -}}
-      {{/* Reusing current password since secret exists */}}
-      {{-  $secret.data.postgresPassword -}}
-    {{- else -}}
-      {{/* Generate new password */}}
-      {{- (randAlphaNum 64) -}}
-    {{- end -}}
-  {{- end -}}
-{{- end -}}
-
 {{/* Postgres configuration */}}
 {{- define "chaingraph.postgres.init-db-config" -}}
 ALTER SYSTEM SET shared_buffers = '{{ div (mul 1024 .Values.postgres.memoryGb) 4 }}MB';
