@@ -1,5 +1,5 @@
 /* eslint-disable max-lines */
-import { cpus, loadavg } from 'os';
+import { cpus, freemem, loadavg, totalmem } from 'os';
 import { inspect } from 'util';
 
 import type {
@@ -65,8 +65,22 @@ const chaingraphProtocolVersion = 70012;
  * re-requesting the block (usually from another node). This only applies if the
  * slow node remains connected – downloads are immediately re-requested from
  * other nodes when a node disconnects.
+ *
+ * Derivatives of the Satoshi implementation can take greater than 1 minute to
+ * respond to some requests during IBD, so Chaingraph uses a value of 5 minutes.
  */
-const downloadTimeout = 60_000;
+const downloadTimeout = 300_000;
+
+/**
+ * The maximum number of block downloads to queue from a single node. This is
+ * primarily only relevant during Initial Block Download for nodes (when some
+ * nodes respond extremely slowly to requests, causing retries) or when
+ * downloading many small blocks while latency between the agent and the node is
+ * exceptionally high. A value of 200 allows for up to 1MB/s in 1KB block
+ * downloads on 200ms latency connections, and this maximum throughput quickly
+ * grows as later, larger blocks are synced.
+ */
+const maxPendingDownloads = 200;
 
 const transactionCacheSize = 100_000;
 
@@ -109,6 +123,31 @@ const twoHoursAgo = () => {
  * syncing state and performance statistics).
  */
 const heartbeatIntervalMs = 20_000;
+
+// eslint-disable-next-line functional/no-let
+let eventLoopDurationsNanoseconds: bigint[] = [];
+
+/**
+ * Gets average since the last sample and clears all samples.
+ */
+const averageEventLoopDurationMs = () => {
+  const total = eventLoopDurationsNanoseconds.reduce(
+    (sum, value) => sum + value,
+    BigInt(0)
+  );
+  const average = Number(total) / eventLoopDurationsNanoseconds.length;
+  eventLoopDurationsNanoseconds = [];
+  const nanosecondsPerMs = 1e6;
+  return average / nanosecondsPerMs;
+};
+
+const eventLoopDurationInterval = setInterval(() => {
+  const start = process.hrtime.bigint();
+  setTimeout(() => {
+    const duration = process.hrtime.bigint() - start;
+    eventLoopDurationsNanoseconds.push(duration);
+  });
+}, msPerSecond);
 
 interface TransactionCacheItem {
   /**
@@ -330,6 +369,12 @@ export class Agent {
          * connection was maintained.
          */
         retriesSinceStableConnection: 0,
+
+        /**
+         * If set, the timer scheduled to retry the connection.
+         */
+        retryTimer: undefined as ReturnType<typeof setTimeout> | undefined,
+
         /**
          * If `true`, the connection will be retried on failure.
          */
@@ -432,7 +477,7 @@ export class Agent {
              */
             this.bufferParsedBlock(expectedGenesisBlock, new Date());
           } else if (genesisBlockHeaderFromDb !== expectedGenesisBlock.hash) {
-            logger.error(
+            logger.fatal(
               `Fatal error: attempted to restore chain for node ${node.name}, but the genesis block hash in the database differs from the one provided by the agent. This is likely a configuration error – shutting down to avoid corrupting the database. Block 0 hash expected: ${expectedGenesisBlock.hash} – from database: ${genesisBlockHeaderFromDb}`
             );
             this.shutdown().catch((err) => {
@@ -464,7 +509,7 @@ export class Agent {
               additionalDelayPerRetry,
             maximumConnectionDelay
           );
-          setTimeout(() => {
+          connectionStatus.retryTimer = setTimeout(() => {
             const seconds = 1_000;
             logger.debug(
               `${node.name}: attempting to reconnect... (retry ${
@@ -497,7 +542,7 @@ export class Agent {
       });
 
       peer.on('inv', (message) => {
-        if (!this.completedInitialSync) {
+        if (!this.saveInboundTransactions) {
           return;
         }
         message.inventory.forEach((inventoryItem) => {
@@ -573,6 +618,9 @@ export class Agent {
         [node.name]: {
           disconnect: () => {
             connectionStatus.shouldRetryConnection = false;
+            if (connectionStatus.retryTimer !== undefined) {
+              clearTimeout(connectionStatus.retryTimer);
+            }
             peer.disconnect();
           },
           downloadThroughput: new ThroughputStatistics(() => ({ bytes: 0 })),
@@ -639,7 +687,7 @@ export class Agent {
    */
   scheduleBlockBufferFill() {
     if (!this.scheduledBlockBufferFill) {
-      setImmediate(() => {
+      setTimeout(() => {
         this.scheduledBlockBufferFill = false;
         if (this.successfullyInitialized) {
           this.fillBlockBuffer();
@@ -656,12 +704,17 @@ export class Agent {
    */
   // eslint-disable-next-line complexity
   fillBlockBuffer() {
+    if (this.willShutdown) {
+      return;
+    }
     logger.trace(
-      `Attempting to fill block buffer. (size: ${this.blockBuffer.currentlyAllocatedSize()} | count: ${this.blockBuffer.count()} | reserved: ${
+      `Attempting to fill block buffer. (size: ${formatBytes(
+        this.blockBuffer.currentlyAllocatedSize()
+      )} | count: ${this.blockBuffer.count()} | reserved: ${
         this.blockBuffer.reservedBlocks
       })`
     );
-    if (!this.blockBuffer.isFull() && !this.willShutdown) {
+    if (!this.blockBuffer.isFull()) {
       const nextBlock = this.selectNextBlockToDownload();
       if (nextBlock === false) {
         logger.trace('fillBlockBuffer: no next block.');
@@ -691,7 +744,9 @@ export class Agent {
                 });
               })
               .catch((err) => {
-                logger.error(err);
+                logger.fatal(err);
+                // eslint-disable-next-line @typescript-eslint/no-floating-promises
+                this.shutdown();
               });
           }
         } else {
@@ -919,7 +974,10 @@ export class Agent {
     return expectedSpeeds
       .sort((a, b) => b.expectedSpeed - a.expectedSpeed)
       .filter(({ nodeName }) => {
-        return this.nodes[nodeName].peer.status === 'ready';
+        return (
+          (downloadCountByNode[nodeName] ?? 0) < maxPendingDownloads &&
+          this.nodes[nodeName].peer.status === 'ready'
+        );
       })
       .map((s) => s.nodeName);
   }
@@ -935,6 +993,9 @@ export class Agent {
    * @param height - the known height of the block to request
    */
   requestBlock(hash: string, height: number) {
+    if (this.willShutdown) {
+      return;
+    }
     const nodeNames = this.blockTree.getNodesWithBlock(hash, height);
     if (
       this.blockDownloads.filter((download) => download.hash === hash)
@@ -949,8 +1010,8 @@ export class Agent {
       | string
       | undefined;
     if (node === undefined) {
-      logger.warn(
-        `Block ${height} (${hash}) is not available from any currently connected node. Will retry download in ${
+      logger.debug(
+        `All nodes with block ${height} (${hash}) are either responding slowly and have reached the maximum number of pending downloads (${maxPendingDownloads}) or are disconnected. Will retry download in ${
           downloadTimeout / msPerSecond
         } seconds.`
       );
@@ -1092,11 +1153,6 @@ export class Agent {
     this.blockBuffer.releaseReservedBlock();
     const durationMs = finishedDownloadAt - download.requestStartTime;
     this.scheduleBlockParse(bitcoreBlock, download.height, (block) => {
-      if (durationMs < 0) {
-        logger.error(
-          `download stats issue - durationMs: ${durationMs}, finishedDownloadAt: ${finishedDownloadAt} download.requestStartTime: ${download.requestStartTime}`
-        );
-      }
       this.nodes[nodeName].downloadThroughput.addStatistic({
         durationMs: durationMs === 0 ? 1 : durationMs,
         metrics: { bytes: block.sizeBytes },
@@ -1130,7 +1186,7 @@ export class Agent {
      * only meaningful differences in acceptance time are likely to be recorded.
      */
     const receivedTime = new Date();
-    setImmediate(() => {
+    setTimeout(() => {
       const block = bitcoreBlockToChaingraphBlock(bitcoreBlock, height);
       this.bufferParsedBlock(block, receivedTime);
       callback(block);
@@ -1145,7 +1201,9 @@ export class Agent {
         this.scheduleBlockBufferFill();
       })
       .catch((err) => {
-        logger.error(err);
+        logger.fatal(err);
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+        this.shutdown();
       });
     this.scheduleBlockBufferFill();
   }
@@ -1213,11 +1271,6 @@ export class Agent {
     const completionTime = Date.now();
 
     const durationMs = completionTime - startTime;
-    if (durationMs < 0) {
-      logger.error(
-        `db stats issue - durationMs: ${durationMs}, startTime: ${startTime} completionTime: ${completionTime}`
-      );
-    }
     const transactions = attemptedSavedTransactions.length;
     const inputs = attemptedSavedTransactions.reduce(
       (total, tx) => total + tx.inputs.length,
@@ -1388,7 +1441,7 @@ export class Agent {
         validatedAt,
       }));
       logger.trace(
-        `Transaction not cached as saved to DB, saving validations for ${validations
+        `Transaction not cached as saved to DB, saving validations for node internal_id: ${validations
           .map((v) => v.nodeInternalId)
           .join(', ')} - hash: ${tx.hash}`
       );
@@ -1425,16 +1478,13 @@ export class Agent {
       const bestHeights = this.blockTree.getBestHeights();
       const downloadStatsByNode = this.getDownloadCountByNode();
 
-      // eslint-disable-next-line functional/no-let
-      let logOutput = '';
-
       const decimalPlaces = 2;
       // eslint-disable-next-line complexity
-      Object.keys(this.nodes).forEach((nodeName) => {
+      const nodes = Object.keys(this.nodes).map((nodeName) => {
         const node = this.nodes[nodeName];
         const { syncState } = node;
         if (syncState === undefined) {
-          return;
+          return { nodeName, status: 'uninitialized' };
         }
 
         const completedHeight = syncState.fullySyncedUpToHeight;
@@ -1445,92 +1495,157 @@ export class Agent {
           this.requestHeaders(nodeName);
         }
 
-        const blockTime =
-          syncState.latestSyncedBlockTime === undefined ||
-          syncState.latestSyncedBlockTime === 'caught-up'
+        const latestSyncedBlockTime =
+          syncState.latestSyncedBlockTime === undefined
             ? 'n/a'
+            : syncState.latestSyncedBlockTime === 'caught-up'
+            ? 'unknown (catching up)'
             : syncState.latestSyncedBlockTime.toISOString();
-        logOutput += `Syncing ${nodeName} – completed height: ${completedHeight} | completed block time: ${blockTime} | pending height: ${pendingHeight} (${renderSyncPercentage(
-          pendingHeight / bestHeight
-        )}%) | best height: ${bestHeight} \n `;
 
         const pendingDownloads = downloadStatsByNode[nodeName] ?? 0;
         const downloadStats = node.downloadThroughput.aggregateStatistics(
           Date.now()
         );
 
-        logOutput += `${nodeName}: Downloads – pending: ${pendingDownloads} | avg: ${formatByteThroughput(
-          downloadStats.average.perActiveSecond.bytes,
-          msPerSecond
-        )} (last 300s – completed: ${
-          downloadStats.statisticsCount
-        } | avg duration: ${downloadStats.average.duration.toFixed(
-          decimalPlaces
-        )}ms | avg concurrency: ${downloadStats.average.concurrency.toFixed(
-          decimalPlaces
-        )} | total: ${formatBytes(downloadStats.totals.bytes)}) \n `;
+        return {
+          nodeName,
+          // eslint-disable-next-line sort-keys
+          downloadStats: {
+            averageDownloadSpeed: formatByteThroughput(
+              downloadStats.average.perActiveSecond.bytes,
+              msPerSecond
+            ),
+            last5Minutes: {
+              averageConcurrency:
+                downloadStats.average.concurrency.toFixed(decimalPlaces),
+              averageDurationMs:
+                downloadStats.average.duration.toFixed(decimalPlaces),
+              downloadedBytes: formatBytes(downloadStats.totals.bytes),
+            },
+            pendingDownloads,
+          },
+          progress: {
+            bestHeight,
+            completedHeight,
+            completedPercent: `${renderSyncPercentage(
+              completedHeight / bestHeight
+            )}%`,
+            latestSyncedBlockTime,
+            pendingHeight,
+            pendingPercent: `${renderSyncPercentage(
+              pendingHeight / bestHeight
+            )}%`,
+          },
+        };
       });
 
+      const memoryUsed = process.memoryUsage();
       const loadDecimalPlaces = 3;
+      const system = {
+        cpus: cpus().length,
+        heartbeatAverageEventLoopDurationMs:
+          averageEventLoopDurationMs().toFixed(decimalPlaces),
+        loadAvg: loadavg()
+          .map((load) => load.toFixed(loadDecimalPlaces))
+          .join(', '),
+        memory: {
+          free: formatBytes(freemem()),
+          total: formatBytes(totalmem()),
+        },
+        memoryUsage: {
+          arrayBuffers: formatBytes(memoryUsed.arrayBuffers),
+          external: formatBytes(memoryUsed.external),
+          heapTotal: formatBytes(memoryUsed.heapTotal),
+          heapUsed: formatBytes(memoryUsed.heapUsed),
+          residentSetSize: formatBytes(memoryUsed.rss),
+        },
+      };
 
-      logOutput += `PG Pool – idle: ${pool.idleCount}/${
-        pool.totalCount
-      } | waiting requests: ${
-        pool.waitingCount
-      } (concurrency: ${postgresMaxConnections}) | system load avg: ${loadavg()
-        .map((load) => load.toFixed(loadDecimalPlaces))
-        .join(', ')} (${cpus().length} CPUs) \n `;
+      const pgPool = {
+        clients: {
+          active: pool.totalCount - pool.idleCount,
+          max: postgresMaxConnections,
+          total: pool.totalCount,
+        },
+        waitingRequests: pool.waitingCount,
+      };
 
       const now = Date.now();
       const txThroughput = this.databaseThroughput.aggregateStatistics(now);
       const blockThroughput =
         this.databaseBlockThroughput.aggregateStatistics(now);
 
-      logOutput += `block throughput – ${formatByteThroughput(
-        blockThroughput.average.perActiveSecond.blockBytes,
-        msPerSecond
-      )} – ${blockThroughput.average.perActiveSecond.blocks.toFixed(
-        decimalPlaces
-      )} blocks/s – avg concurrency: ${Math.round(
-        blockThroughput.average.concurrency
-      ).toFixed(decimalPlaces)} | duration: ${Math.round(
-        blockThroughput.average.duration
-      )}ms (last 300s – ${
-        blockThroughput.totals.blocks
-      } blocks | bytes: ${formatBytes(
-        blockThroughput.totals.blockBytes
-      )} | TX cache misses: ${
-        blockThroughput.totals.transactionCacheMisses
-      } ) \n `;
+      const dbThroughput = {
+        blocks: {
+          blockThroughputSpeed: formatByteThroughput(
+            blockThroughput.average.perActiveSecond.blockBytes,
+            msPerSecond
+          ),
+          blocksPerSecond:
+            blockThroughput.average.perActiveSecond.blocks.toFixed(
+              decimalPlaces
+            ),
+          last5Minutes: {
+            averageConcurrency: Math.round(
+              blockThroughput.average.concurrency
+            ).toFixed(decimalPlaces),
+            averageDurationMs: Math.round(blockThroughput.average.duration),
+            blocks: blockThroughput.totals.blocks,
+            bytes: formatBytes(blockThroughput.totals.blockBytes),
+            txCacheMisses: blockThroughput.totals.transactionCacheMisses,
+          },
+        },
+        transactions: {
+          transactionThroughputSpeed: formatByteThroughput(
+            txThroughput.average.perActiveSecond.transactionBytes,
+            msPerSecond
+          ),
+          transactionsPerSecond: Math.round(
+            txThroughput.average.perActiveSecond.transactions
+          ),
+          // eslint-disable-next-line sort-keys
+          inputsPerSecond: Math.round(
+            txThroughput.average.perActiveSecond.inputs
+          ),
+          outputsPerSecond: Math.round(
+            txThroughput.average.perActiveSecond.outputs
+          ),
+          // eslint-disable-next-line sort-keys
+          last5Minutes: {
+            averageConcurrency: Math.round(
+              txThroughput.average.concurrency
+            ).toFixed(decimalPlaces),
+            averageDurationMs: Math.round(txThroughput.average.duration),
+            bytes: formatBytes(txThroughput.totals.transactionBytes),
+            inputs: txThroughput.totals.inputs,
+            outputs: txThroughput.totals.outputs,
+            transactions: txThroughput.totals.transactions,
+          },
+        },
+      };
 
-      logOutput += `tx throughput – ${formatByteThroughput(
-        txThroughput.average.perActiveSecond.transactionBytes,
-        msPerSecond
-      )} – ${Math.round(
-        txThroughput.average.perActiveSecond.transactions
-      )} tx/s | ${Math.round(
-        txThroughput.average.perActiveSecond.inputs
-      )} in/s | ${Math.round(
-        txThroughput.average.perActiveSecond.outputs
-      )} out/s – avg concurrency: ${Math.round(
-        txThroughput.average.concurrency
-      ).toFixed(decimalPlaces)} | duration: ${Math.round(
-        txThroughput.average.duration
-      )}ms (last 300s – ${txThroughput.totals.transactions} txs | ${
-        txThroughput.totals.inputs
-      } inputs | ${txThroughput.totals.outputs} outputs | bytes: ${formatBytes(
-        txThroughput.totals.transactionBytes
-      )}) \n `;
+      const blockBuffer = {
+        count: this.blockBuffer.count(),
+        reserved: this.blockBuffer.reservedBlocks,
+        size: formatBytes(this.blockBuffer.currentTotalBytes()),
+        targetSize: formatBytes(this.blockBuffer.targetSizeBytes),
+      };
 
-      logOutput += `Block buffer – count: ${this.blockBuffer.count()} | size: ${formatBytes(
-        this.blockBuffer.currentTotalBytes()
-      )} | target: ${formatBytes(
-        this.blockBuffer.targetSizeBytes
-      )} | Block DB hashes: ${
-        this.blockDb?.size ?? 0
-      } – transaction DB hashes: ${this.transactionCache.length} \n`;
+      const blockDbHashes = this.blockDb?.size ?? 0;
+      const transactionDbHashes = this.transactionCache.length;
 
-      logger.info(logOutput);
+      const stats = {
+        blockBuffer,
+        dbThroughput,
+        nodes,
+        pgPool,
+        system,
+        // eslint-disable-next-line sort-keys
+        blockDbHashes,
+        transactionDbHashes,
+      };
+
+      logger.info(stats, 'Syncing...');
     }
   }
 
@@ -1541,6 +1656,7 @@ export class Agent {
       return this.shutdownPromise;
     }
     this.willShutdown = true;
+    clearInterval(eventLoopDurationInterval);
     clearInterval(this.heartbeatInterval);
     Object.values(this.nodes).forEach((connection) => {
       connection.disconnect();
