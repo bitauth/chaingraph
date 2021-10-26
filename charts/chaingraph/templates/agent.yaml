@@ -53,6 +53,10 @@ spec:
           value: {{ .Values.agent.logLevel | quote }}
         - name: CHAINGRAPH_HEALTH_CHECK_PORT
           value: {{ .Values.agent.port | quote }}
+{{- if .Values.useDevelopmentVolumes }}
+        - name: CHAINGRAPH_LOG_PATH
+          value: "/data/log.ndjson"
+{{- end }}
         livenessProbe:
           httpGet:
             path: /healthcheck
@@ -72,4 +76,24 @@ spec:
           successThreshold: 1
           failureThreshold: 3
         resources: {}
+{{- if .Values.useDevelopmentVolumes }}
+        volumeMounts:
+          - name: agent-volume
+            mountPath: /data
+      volumes:
+        - name: agent-volume
+          persistentVolumeClaim:
+            claimName: agent-volume-claim
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agent-volume-claim
+spec:
+  accessModes: [ "ReadWriteOnce" ]
+  volumeName: agent-volume
+  resources:
+    requests:
+      storage: 5Gi
+{{- end }}
 {{- end }}

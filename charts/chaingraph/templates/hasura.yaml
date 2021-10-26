@@ -55,6 +55,10 @@ spec:
           value: {{ .Values.hasura.enableConsole | quote }}
         - name: HASURA_GRAPHQL_ADMIN_INTERNAL_ERRORS
           value: 'true'
+        - name: HASURA_GRAPHQL_UNAUTHORIZED_ROLE
+          value: 'public'
+        - name: HASURA_GRAPHQL_ENABLE_ALLOWLIST
+          value: {{ .Values.hasura.enableAllowList | quote }}
         ports:
         - containerPort: 8080
           protocol: TCP

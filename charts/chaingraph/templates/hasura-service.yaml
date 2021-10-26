@@ -10,6 +10,14 @@ spec:
   - protocol: TCP
     port: 80
     targetPort: 8080
+{{- if .Values.useDevelopmentVolumes }}
+    nodePort: 31933
+{{- end }}
   selector:
     app: hasura
-  type: ClusterIP
+  externalTrafficPolicy: Local
+{{- if .Values.hasura.useLoadBalancer }}
+  type: LoadBalancer
+{{- else }}
+  type: NodePort
+{{- end }}

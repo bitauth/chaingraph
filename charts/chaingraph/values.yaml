@@ -1,6 +1,6 @@
 # Default values for Chaingraph.
 
-# If set, allocate persistent volumes for development.
+# If set, allocate persistent volumes for development. (This is intended for use by developers working directly in the Chaingraph repo.)
 useDevelopmentVolumes: false
 
 # Configuration settings for the agent which handles database synchronization in Chaingraph
@@ -8,7 +8,7 @@ agent:
   # Manage the Chaingraph agent from this chart.
   enable: true
   # The precise Chaingraph Agent Docker image to use.
-  image: chaingraph/agent@sha256:cebdfa7a235e2128d1daf43b065380ed124fdc880ef48bf61ef389b9bca0c87d # 1f01fa6
+  image: chaingraph/agent@sha256:c2102c7e184740b81238ed9ce732d5f6856fcff16ff8f6b74d9d46fff9251b8f # 9bc167a
   # A list of trusted external nodes to which this Chaingraph instance should connect. If specified, this list will be appended to the list of trusted nodes which are managed by this Chaingraph chart.
   # This must be specified using the same format as `CHAINGRAPH_TRUSTED_NODES`, e.g. `bchn:127.0.0.1:8333:mainnet,bchd:127.0.0.1:8334:testnet,another:127.0.0.1:8335:e3e1f3e8`
   externalNodes: ''
@@ -31,7 +31,7 @@ agent:
 # Configuration settings for the built-in Bitcoin Cash Node
 bitcoinCashNode:
   # Enable a local Bitcoin Cash Node.
-  enable: true
+  enable: false
   # The precise Bitcoin Cash Node Docker image to use.
   image: chaingraph/bitcoin-cash-node@sha256:4d4224c315052ad8fe2821e73aa950f98e039ed1afad0939df6862ca3d548f04 # v23.1.0
   # The size of the volume to provision for Bitcoin Cash Node.
@@ -40,7 +40,7 @@ bitcoinCashNode:
 # Configuration settings for the built-in Bitcoin Cash Node (Testnet)
 bitcoinCashNodeTestnet:
   # Enable a local Bitcoin Cash Node.
-  enable: false
+  enable: true
   # The precise Bitcoin Cash Node (Testnet) Docker image to use. If not set, the value for bitcoinCashNode.image will be used.
   image: ''
   # The size of the volume to provision for Bitcoin Cash Node.
@@ -78,13 +78,18 @@ hasura:
   # Enable a local Hasura deployment. Disable this to either manage Hasura manually or use Hasura Cloud.
   enable: true
   # The precise Hasura Docker image to use.
-  image: chaingraph/hasura@sha256:3e8ef6f6ed23da0b79ca571b306bb34f6a174e7b415d19cd4c07fa6ef70860c8 # 21dea72
+  image: chaingraph/hasura@sha256:4d44757571418cb08977622f5235164ee061a6bb9eaf9d9d86b739b582bc9aac # 9bc167a
   # A secret key used to secure admin access in Hasura. If not provided, a random secret will be generated and stored in the cluster.
   adminSecretKey: ''
   # Enable the console served by Hasura. (Not recommended; use Hasura CLI's `hasura console` instead.)
   enableConsole: false
   # An alternative Postgres database URL in which Hasura metadata should be stored. If not set, metadata will be stored in the configured Postgres database.
   metadataDbUrl: ''
+  # Configure a load balancer to serve the GraphQL API at port 80. Disabled by default because most cloud providers charge a monthly price for load balancer usage, and Chaingraph can be tested or used for development without load balancing.
+  # Note: it is recommended that this be enabled for production usage if Hasura is being managed internally by Chaingraph.
+  useLoadBalancer: false
+  # Enable enforcement of the configured allow-list. While this is disabled for simplicity during development, it is important for hardening production APIs against maliciously expensive queries.
+  enableAllowList: false
 
 pgAdmin:
   # Enable a local pgAdmin installation. (This should only be used during development.)

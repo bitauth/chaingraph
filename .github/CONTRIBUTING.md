@@ -187,6 +187,14 @@ This will create the database at `./data/postgres-local`. (If this directory is 
 yarn local:postgres
 ```
 
+In a new shell (with the database running), run:
+
+```sh
+yarn local:postgres:tune
+```
+
+to tune the database settings for Chaingraph, then stop and restart the database in the original shell to ensure the options take effect.
+
 To configure the dev cluster for a local Postgres instance, recreate it by running:
 
 ```sh
@@ -194,7 +202,7 @@ yarn dev-cluster:destroy
 yarn dev-cluster:init:local
 ```
 
-(Note: destroying and recreating the cluster should always leave the `data` directory in tact, so the recreated cluster will continue where it left off. To also reset a volume, delete or rename the chosen directory within the `data` directory when re-creating the cluster.)
+(Note: destroying and recreating the cluster should always leave the `data` directory intact, so the recreated cluster will continue where it left off. To also reset a volume, delete or rename the chosen directory within the `data` directory when re-creating the cluster.)
 
 ## Running End-to-End (E2E) Tests
 

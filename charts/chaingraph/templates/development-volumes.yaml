@@ -1,4 +1,5 @@
 {{- if .Values.useDevelopmentVolumes }}
+{{- if .Values.bitcoinCashNode.enable }}
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -15,6 +16,8 @@ spec:
     - ReadWriteOnce
   hostPath:
     path: "/data/bitcoin-cash-node"
+{{- end }}
+{{- if .Values.bitcoinCashNodeTestnet.enable }}
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -27,11 +30,31 @@ spec:
   storageClassName: local-path
   persistentVolumeReclaimPolicy: Retain
   capacity:
-    storage: {{ .Values.bitcoinCashNode.volumeSize }}
+    storage: {{ .Values.bitcoinCashNodeTestnet.volumeSize }}
   accessModes:
     - ReadWriteOnce
   hostPath:
     path: "/data/bitcoin-cash-node-testnet"
+{{- end }}
+{{- if .Values.agent.enable }}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: agent-volume
+  labels:
+    type: local
+    developmentVolume: agent
+spec:
+  storageClassName: local-path
+  persistentVolumeReclaimPolicy: Retain
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/data/agent"
+{{- end }}
 {{- if not .Values.postgres.externalDbUrl }}
 ---
 apiVersion: v1

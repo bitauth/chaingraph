@@ -109,6 +109,63 @@ yarn dev-cluster:port-forward:pghero
 ```
 Then visit: http://localhost:8082/
 {{ end }}
+--- API ---
+Chaingraph's GraphQL API is listening at: /v1/graphql
+{{- if .Values.hasura.useLoadBalancer }}
+A load balancer has been provisioned; it may take a few minutes for the LoadBalancer IP to be available. You can watch the status by running:
+```
+kubectl get --namespace {{ .Release.Namespace }} svc -w hasura-service
+```
+
+Once the load balancer is ready, you can get the IP address by running:
+```
+kubectl get svc --namespace {{ .Release.Namespace }} hasura-service --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}"
+```
+
+To configure a domain name, create a new A record in your domain's DNS settings with a value set to the retrieved IP address, e.g.:
+
+NAME                    TYPE   VALUE
+-------------------------------------------
+api.example.com.        A      192.0.2.34
+
+This would make your API available at: api.example.com/v1/graphql
+{{- else }}
+A load balancer has not been provisioned; this can be less expensive on many cloud providers, but a load balancer is recommended for production applications.
+
+To get the URL for your API, run:
+
+```
+export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services hasura-service)
+export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[?(@.type=='ExternalIP')].address}")
+echo http://$NODE_IP:$NODE_PORT/v1/graphql
+```
+
+Note, you may need to create a firewall rule to allow TCP traffic on the configured node port. Check your kubernetes provider's documentation for guidance on exposing Kubernetes services of type "NodePort". Additionally, depending on your kubernetes provider, the external IP of your API may change, particularly when a kubernetes node is replaced (e.g. during upgrades).
+
+To configure a domain name, create a new A record in your domain's DNS settings with a value set to the retrieved IP address, e.g.:
+
+NAME                    TYPE   VALUE
+-------------------------------------------
+api.example.com.        A      192.0.2.34
+
+This would make your API available at: api.example.com:$NODE_PORT/v1/graphql
+{{ if .Values.useDevelopmentVolumes }}
+Note: it seems like you're using the Chaingraph repo. If you're using k3d, the API is simply at localhost:
+http://localhost:31933/v1/graphql
+{{ end }}
+{{- end }}
+
+--- Security ---
+{{ if .Values.hasura.enableAllowList -}}
+Hasura Allow-List is enabled. Only configured GraphQL queries will be allowed without an admin secret key.
+{{- else }}
+**WARNING: Hasura Allow-List is disabled.**
+
+Unless you've customized schema permissions, most read-only queries will be allowed. This is useful for development, but it is typically not safe for production use cases without additional hardening.
+
+If this installation is intended for production use, an allow-list is recommended.
+{{- end }}
+
 ---
 
 ..............................................................
