@@ -41,3 +41,19 @@ computed_fields:
       name: input_value_satoshis
       schema: public
   name: value_satoshis
+select_permissions:
+- permission:
+    allow_aggregations: true
+    columns:
+    - transaction_internal_id
+    - input_index
+    - outpoint_index
+    - sequence_number
+    - outpoint_transaction_hash
+    - unlocking_bytecode
+    computed_fields:
+    - redeem_bytecode_pattern
+    - unlocking_bytecode_pattern
+    - value_satoshis
+    filter: {}
+  role: public

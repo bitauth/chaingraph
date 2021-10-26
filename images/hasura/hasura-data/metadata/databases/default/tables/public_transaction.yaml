@@ -106,3 +106,22 @@ computed_fields:
       name: transaction_signing_output
       schema: public
   name: signing_output
+select_permissions:
+- permission:
+    allow_aggregations: true
+    columns:
+    - internal_id
+    - hash
+    - version
+    - locktime
+    - size_bytes
+    - is_coinbase
+    computed_fields:
+    - encoded_hex
+    - fee_satoshis
+    - input_count
+    - input_value_satoshis
+    - output_count
+    - output_value_satoshis
+    filter: {}
+  role: public
