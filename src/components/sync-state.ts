@@ -35,7 +35,10 @@ export class SyncState {
    *
    * A value of 'caught-up' indicates to chaingraph that this node is not
    * actively syncing an unknown chain tip, and the sync state of this node can
-   * be ignored when checking for initial sync completion.
+   * be ignored when checking for initial sync completion. (If this node has
+   * been synced or partially synced before, it will initialize with a value of
+   * `caught-up` – if further syncing is required, this value will be quickly
+   * replaced with the next synced block time.)
    *
    * A value of undefined indicates that this node has 1) not been synced
    * before, and 2) not yet successfully saved a block, so initial sync is not
@@ -58,7 +61,7 @@ export class SyncState {
     if (claimedBlockTime === 'caught-up') {
       this.latestSyncedBlockTime = 'caught-up';
     } else if (
-      this.latestSyncedBlockTime === undefined ||
+      !(this.latestSyncedBlockTime instanceof Date) ||
       this.latestSyncedBlockTime < claimedBlockTime
     ) {
       this.latestSyncedBlockTime = claimedBlockTime;

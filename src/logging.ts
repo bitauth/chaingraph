@@ -58,4 +58,8 @@ switch (chaingraphLogLevelStdout) {
     break;
 }
 
+if (chaingraphLogPath !== false) {
+  logger.debug(`Also logging at level 'trace' to: ${chaingraphLogPath}`);
+}
+
 export { pino };
