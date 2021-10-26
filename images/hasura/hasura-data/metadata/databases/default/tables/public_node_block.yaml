@@ -8,3 +8,12 @@ object_relationships:
 - name: node
   using:
     foreign_key_constraint_on: node_internal_id
+select_permissions:
+- permission:
+    allow_aggregations: true
+    columns:
+    - node_internal_id
+    - block_internal_id
+    - accepted_at
+    filter: {}
+  role: public

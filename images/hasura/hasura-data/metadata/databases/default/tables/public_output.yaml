@@ -23,3 +23,15 @@ computed_fields:
       name: output_locking_bytecode_pattern
       schema: public
   name: locking_bytecode_pattern
+select_permissions:
+- permission:
+    allow_aggregations: true
+    columns:
+    - transaction_hash
+    - output_index
+    - value_satoshis
+    - locking_bytecode
+    computed_fields:
+    - locking_bytecode_pattern
+    filter: {}
+  role: public

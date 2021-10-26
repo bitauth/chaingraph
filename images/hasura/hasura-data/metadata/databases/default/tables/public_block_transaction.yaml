@@ -8,3 +8,12 @@ object_relationships:
 - name: transaction
   using:
     foreign_key_constraint_on: transaction_internal_id
+select_permissions:
+- permission:
+    allow_aggregations: true
+    columns:
+    - block_internal_id
+    - transaction_internal_id
+    - transaction_index
+    filter: {}
+  role: public

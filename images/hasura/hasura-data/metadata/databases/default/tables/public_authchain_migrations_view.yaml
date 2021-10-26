@@ -7,3 +7,12 @@ computed_fields:
       name: authchain_migration_transaction
       schema: public
   name: transaction
+select_permissions:
+- permission:
+    allow_aggregations: true
+    columns:
+    - authbase_internal_id
+    - migration_index
+    - migration_transaction_internal_id
+    filter: {}
+  role: public

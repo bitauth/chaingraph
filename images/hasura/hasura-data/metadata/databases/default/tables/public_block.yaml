@@ -49,3 +49,24 @@ computed_fields:
       name: block_transaction_count
       schema: public
   name: transaction_count
+select_permissions:
+- permission:
+    allow_aggregations: true
+    columns:
+    - internal_id
+    - hash
+    - previous_block_hash
+    - merkle_root
+    - height
+    - size_bytes
+    - timestamp
+    - nonce
+    - bits
+    - version
+    computed_fields:
+    - encoded_hex
+    - fee_satoshis
+    - header
+    - transaction_count
+    filter: {}
+  role: public

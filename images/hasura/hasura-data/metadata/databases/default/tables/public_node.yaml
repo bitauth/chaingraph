@@ -16,3 +16,15 @@ array_relationships:
       table:
         name: node_transaction
         schema: public
+select_permissions:
+- permission:
+    allow_aggregations: true
+    columns:
+    - name
+    - internal_id
+    - protocol_version
+    - user_agent
+    - first_connected_at
+    - latest_connection_began_at
+    filter: {}
+  role: public

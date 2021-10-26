@@ -21,3 +21,12 @@ array_relationships:
       remote_table:
         name: authchain_migrations_view
         schema: public
+select_permissions:
+- permission:
+    columns:
+    - transaction_internal_id
+    - authhead_transaction_hash
+    - authchain_length
+    - unspent_authhead
+    filter: {}
+  role: public
