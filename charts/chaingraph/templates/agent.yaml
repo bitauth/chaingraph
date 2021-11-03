@@ -37,6 +37,8 @@ spec:
         {{ end }}
         - name: CHAINGRAPH_POSTGRES_MAX_CONNECTIONS
           value: {{ .Values.agent.maxConnections | quote }}
+        - name: CHAINGRAPH_POSTGRES_SYNCHRONOUS_COMMIT
+          value: {{ .Values.agent.synchronousCommit | quote }}
         - name: CHAINGRAPH_BLOCK_BUFFER_TARGET_SIZE_MB
           value: {{ .Values.agent.blockBufferTargetSizeMb | quote }}
         - name: CHAINGRAPH_GENESIS_BLOCKS
@@ -53,10 +55,10 @@ spec:
           value: {{ .Values.agent.logLevel | quote }}
         - name: CHAINGRAPH_HEALTH_CHECK_PORT
           value: {{ .Values.agent.port | quote }}
-{{- if .Values.useDevelopmentVolumes }}
+        {{- if .Values.useDevelopmentVolumes }}
         - name: CHAINGRAPH_LOG_PATH
           value: "/data/log.ndjson"
-{{- end }}
+        {{- end }}
         livenessProbe:
           httpGet:
             path: /healthcheck

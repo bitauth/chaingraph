@@ -16,9 +16,14 @@ agent:
   # e.g. CHAINGRAPH_USER_AGENT=/chaingraph-custom:0.0.0/
   userAgent: ''
   # The maximum number of connections the agent should maintain to the database.
-  maxConnections: 20
+  # For best performance, this should be set to the number of CPUs available to Postgres. If not set, Chaingraph will assume that Postgres is running on hardware equivalent to its own. (This is ideal if Postgres is running on either the same machine or an equivalent one from a homogenous Kubernetes node pool.)
+  maxConnections: ''
+# If set to false, the Postgres database will be configured to use "synchronous_commit = off" during initial sync.
+# In real-world testing, this usually reduces the speed of Chaingraph's initial sync, so Chaingraph leaves "synchronous_commit = on" by default.
+  synchronousCommit: true
   # The target size (in MB) of the buffer which holds downloaded blocks waiting to be saved to the database. This primarily affects memory usage during the initial chain sync.
-  blockBufferTargetSizeMb: 20
+  # For best performance, this should be around `maxConnections * maximum block size`, while leaving enough memory available to the host machine. If left unset (recommended), Chaingraph will measure free memory at startup and attempt to select a reasonable value.
+  blockBufferTargetSizeMb: ''
   # A mapping of network magic bytes to hex-encoded genesis blocks.
   # Format: `NETWORK_MAGIC:RAW_GENESIS_BLOCK_HEX`, comma separated.
   # E.g. CHAINGRAPH_GENESIS_BLOCKS=e3e1f3e8:rawblockhex,deadbeef:rawblockhex
@@ -44,7 +49,7 @@ bitcoinCashNodeTestnet:
   # The precise Bitcoin Cash Node (Testnet) Docker image to use. If not set, the value for bitcoinCashNode.image will be used.
   image: ''
   # The size of the volume to provision for Bitcoin Cash Node.
-  volumeSize: 5Gi
+  volumeSize: 2Gi
 
 # Configuration settings for the Postgres database to be used by Chaingraph
 postgres:
@@ -54,25 +59,28 @@ postgres:
   # For development and lower-cost applications, the default, built-in postgres instance is ideal.
   externalDbUrl: ''
   # The precise Postgres Docker image to use.
-  # This is only used if `externalPostgresDbUrl` is not set.
+  # This is only used if `externalDbUrl` is not set.
   image: postgres@sha256:f5b88e89628de59e0cd28b25d7c26ac2f43fdd235c7263aa98ff971898fe9c5f # v14.0
   # The Postgres username to use.
   # NOTE: this can only be configured from the chart during database creation. If the database already exists, the postgres username/password must be created or updated manually before changing this value.
-  # This is only used if `externalPostgresDbUrl` is not set.
+  # This is only used if `externalDbUrl` is not set.
   username: 'chaingraph'
   # The Postgres password to use. If not provided, a random secret will be generated and stored in the cluster.
   # NOTE: this can only be configured from the chart during database creation. If the database already exists, the postgres username/password must be created or updated manually before changing this value.
-  # This is only used if `externalPostgresDbUrl` is not set.
+  # This is only used if `externalDbUrl` is not set.
   password: ''
   # The size of the volume to provision for the internal Postgres database.
-  # This is only used if `externalPostgresDbUrl` is not set.
-  volumeSize: 600Gi
+  # This is only used if `externalDbUrl` is not set.
+  volumeSize: 5Gi
   # The memory available to the kubernetes node intended for running the Postgres database (ideally, the highest-resource node in the cluster).
-  # This is only used if `externalPostgresDbUrl` is not set.
+  # This is only used if `externalDbUrl` is not set.
   memoryGb: 1
   # The number of CPUs available to the kubernetes node intended for running the Postgres database (ideally, the highest-resource node in the cluster).
-  # This is only used if `externalPostgresDbUrl` is not set.
+  # This is only used if `externalDbUrl` is not set.
   cpus: 1
+  # The storageClassName to use for Postgres' PersistentVolumeClaimTemplate. If not set, the default StorageClass for cluster will be used.
+  # Depending on the provider, this can be configured to ensure SSD storage is allocated to Postgres. For example, GKE uses the storageClassName `premium-rwo`.
+  storageClassName: ''
 
 hasura:
   # Enable a local Hasura deployment. Disable this to either manage Hasura manually or use Hasura Cloud.
@@ -95,7 +103,7 @@ pgAdmin:
   # Enable a local pgAdmin installation. (This should only be used during development.)
   enable: false
   # The precise pgAdmin Docker image to use (only used if `pgAdmin.enable` is `true`).
-  image: dpage/pgadmin4@sha256:a16f42afe887fbbaec183d72f10699405cb5234579a8dae394f53b3e71a3924c
+  image: dpage/pgadmin4@sha256:d2b89e728b33f466cad674a16c6b30b28b1823d9f03b07f0d60654cb5bba037c
   # The size of the volume to provision for pgAdmin (only used if `pgAdmin.enable` is `true`).
   volumeSize: 10Gi
   # The admin email/username used to log in to pgAdmin

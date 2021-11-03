@@ -88,6 +88,9 @@ spec:
   - metadata:
       name: postgres-volume
     spec:
+      {{- if .Values.postgres.storageClassName }}
+      storageClassName: {{ .Values.postgres.storageClassName }}
+      {{- end }}
       accessModes: [ "ReadWriteOnce" ]
       resources:
         requests:

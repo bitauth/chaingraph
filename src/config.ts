@@ -3,7 +3,7 @@
  * `CHAINGRAPH_LOG_PATH` configuration.
  */
 import { readFileSync } from 'fs';
-import { homedir } from 'os';
+import { cpus, freemem, homedir } from 'os';
 import { join, resolve } from 'path';
 
 import { binToHex, hexToBin, isHex } from '@bitauth/libauth';
@@ -41,6 +41,7 @@ const expectedOptions = [
   'CHAINGRAPH_LOG_PATH',
   'CHAINGRAPH_POSTGRES_CONNECTION_STRING',
   'CHAINGRAPH_POSTGRES_MAX_CONNECTIONS',
+  'CHAINGRAPH_POSTGRES_SYNCHRONOUS_COMMIT',
   'CHAINGRAPH_TRUSTED_NODES',
   'CHAINGRAPH_USER_AGENT',
   'NODE_ENV',
@@ -68,29 +69,44 @@ if (!requireStringValues(configuration, expectedOptions)) {
 const postgresConnectionString =
   configuration.CHAINGRAPH_POSTGRES_CONNECTION_STRING;
 
-/**
- * Set via the `CHAINGRAPH_BLOCK_BUFFER_TARGET_SIZE_MB` environment variable.
- */
-const blockBufferTargetSizeMB = Number(
-  configuration.CHAINGRAPH_BLOCK_BUFFER_TARGET_SIZE_MB
+const maxConnectionsValue = Number(
+  configuration.CHAINGRAPH_POSTGRES_MAX_CONNECTIONS
 );
-if (isNaN(blockBufferTargetSizeMB) || blockBufferTargetSizeMB <= 0) {
-  // eslint-disable-next-line functional/no-throw-statement
-  throw new Error(
-    'The CHAINGRAPH_BLOCK_BUFFER_TARGET_SIZE_MB environment variable must be greater than 0.'
-  );
-}
-
 /**
  * Set via the `CHAINGRAPH_POSTGRES_MAX_CONNECTIONS` environment variable.
  */
-const postgresMaxConnections = Number(
-  configuration.CHAINGRAPH_POSTGRES_MAX_CONNECTIONS
-);
+const postgresMaxConnections =
+  maxConnectionsValue === 0 ? cpus().length : maxConnectionsValue;
 if (!Number.isInteger(postgresMaxConnections) || postgresMaxConnections < 1) {
   // eslint-disable-next-line functional/no-throw-statement
   throw new Error(
     'The CHAINGRAPH_POSTGRES_MAX_CONNECTIONS environment variable must be a number greater than 0.'
+  );
+}
+
+const blockBufferTargetSizeMbValue = Number(
+  configuration.CHAINGRAPH_BLOCK_BUFFER_TARGET_SIZE_MB
+);
+const mb = 1_000_000;
+const denominator = 3;
+const oneThirdOfAvailableMemory = Math.round(freemem() / mb / denominator);
+const expectedMaximumBlockSizeMb = 32;
+const maximumUsefulBuffer = postgresMaxConnections * expectedMaximumBlockSizeMb;
+const autoBufferSize = Math.min(oneThirdOfAvailableMemory, maximumUsefulBuffer);
+/**
+ * Set via the `CHAINGRAPH_BLOCK_BUFFER_TARGET_SIZE_MB` environment variable.
+ * If no block buffer target is provided, Chaingraph will allocate 1/3 of free
+ * system memory up to the maximum useful value
+ * (`postgresMaxConnections * maximum block size`).
+ */
+const blockBufferTargetSizeMb =
+  blockBufferTargetSizeMbValue === 0
+    ? autoBufferSize
+    : blockBufferTargetSizeMbValue;
+if (isNaN(blockBufferTargetSizeMb) || blockBufferTargetSizeMb <= 0) {
+  // eslint-disable-next-line functional/no-throw-statement
+  throw new Error(
+    'The CHAINGRAPH_BLOCK_BUFFER_TARGET_SIZE_MB environment variable must be greater than 0.'
   );
 }
 
@@ -298,12 +314,18 @@ const chaingraphUserAgent =
     : configuration.CHAINGRAPH_USER_AGENT;
 
 /**
+ * Set via the `CHAINGRAPH_POSTGRES_SYNCHRONOUS_COMMIT` environment variable.
+ */
+const postgresSynchronousCommit =
+  configuration.CHAINGRAPH_POSTGRES_SYNCHRONOUS_COMMIT !== 'false';
+
+/**
  * `true` if the `NODE_ENV` environment variable is `production`.
  */
 const isProduction = configuration.NODE_ENV === 'production';
 
 export {
-  blockBufferTargetSizeMB,
+  blockBufferTargetSizeMb,
   chaingraphHealthCheckPort,
   chaingraphLogFirehose,
   chaingraphLogPath,
@@ -312,6 +334,7 @@ export {
   genesisBlocks,
   postgresMaxConnections,
   postgresConnectionString,
+  postgresSynchronousCommit,
   isProduction,
   trustedNodes,
 };

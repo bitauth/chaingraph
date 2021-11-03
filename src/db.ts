@@ -5,7 +5,11 @@ import {
   computeIndexCreationProgress,
   indexDefinitions,
 } from './components/db-utils';
-import { postgresConnectionString, postgresMaxConnections } from './config';
+import {
+  postgresConnectionString,
+  postgresMaxConnections,
+  postgresSynchronousCommit,
+} from './config';
 import type {
   ChaingraphBlock,
   ChaingraphTransaction,
@@ -112,7 +116,6 @@ export const registerTrustedNodeWithDb = async (node: {
     RETURNING internal_id;
 `;
   const client = await pool.connect();
-  await client.query('BEGIN;');
   // eslint-disable-next-line @typescript-eslint/naming-convention, camelcase
   const nodeInternalIdQuery = await client.query<{ internal_id: number }>(
     registerNode,
@@ -138,7 +141,6 @@ export const registerTrustedNodeWithDb = async (node: {
 `,
     [internalId]
   );
-  await client.query('COMMIT;');
   client.release();
   const syncedHeaderHashChain = blockArrayToHashChain(acceptedBlocksQuery.rows);
   return { internalId, syncedHeaderHashChain };
@@ -541,6 +543,47 @@ export const reenableMempoolCleaning = async () => {
   );
   client.release();
   return res.rowCount;
+};
+
+/**
+ * If configured, disable `synchronous_commit` for the database. (Returns false
+ * if synchronous_commit is not disabled.)
+ *
+ * Chaingraph can disable `synchronous_commit` in an effort to improve initial
+ * sync performance. This would normally risk data loss (but not corruption) in
+ * the event of a database crash, but because Chaingraph can simply re-request
+ * blocks from the trusted nodes, synchronous commits aren't valuable during
+ * initial sync.
+ *
+ * Note: in real-world testing, this usually reduces the speed of Chaingraph's
+ * initial sync, so Chaingraph leaves "synchronous_commit = on" by default.
+ */
+export const optionallyDisableSynchronousCommit = async () => {
+  if (postgresSynchronousCommit) {
+    return false;
+  }
+  const client = await pool.connect();
+  await client.query(
+    `DO $$ BEGIN execute 'ALTER DATABASE ' || current_database() || ' SET synchronous_commit TO OFF'; END $$;`
+  );
+  client.release();
+  return true;
+};
+
+/**
+ * Re-enable `synchronous_commit` for the database.
+ *
+ * See `disableSynchronousCommit` for details.
+ */
+export const optionallyEnableSynchronousCommit = async () => {
+  if (postgresSynchronousCommit) {
+    return;
+  }
+  const client = await pool.connect();
+  await client.query(
+    `DO $$ BEGIN execute 'ALTER DATABASE ' || current_database() || ' SET synchronous_commit TO ON'; END $$;`
+  );
+  client.release();
 };
 
 /**
