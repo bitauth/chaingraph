@@ -28,7 +28,7 @@ import {
   ThroughputStatistics,
 } from './components/throughput-statistics';
 import {
-  blockBufferTargetSizeMB,
+  blockBufferTargetSizeMb,
   chaingraphLogFirehose,
   chaingraphUserAgent,
   genesisBlocks,
@@ -41,6 +41,8 @@ import {
   getAllKnownBlockHashes,
   getIndexCreationProgress,
   listExistingIndexes,
+  optionallyDisableSynchronousCommit,
+  optionallyEnableSynchronousCommit,
   pool,
   recordNodeValidation,
   reenableMempoolCleaning,
@@ -335,7 +337,7 @@ export class Agent {
       freedSpaceCallback: () => {
         this.scheduleBlockBufferFill();
       },
-      targetSize: blockBufferTargetSizeMB * MB,
+      targetSize: blockBufferTargetSizeMb * MB,
     });
 
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
@@ -673,8 +675,19 @@ export class Agent {
         this.scheduleBlockBufferFill();
       }, second);
     } else {
-      this.successfullyInitialized = true;
-      this.scheduleBlockBufferFill();
+      optionallyDisableSynchronousCommit()
+        .then((disabled) => {
+          if (disabled) {
+            logger.debug('Disabled synchronous_commit for initial sync.');
+          }
+        })
+        .catch((err) => {
+          logger.error(err);
+        })
+        .finally(() => {
+          this.successfullyInitialized = true;
+          this.scheduleBlockBufferFill();
+        });
     }
   }
 
@@ -735,18 +748,29 @@ export class Agent {
           ) {
             this.completedInitialSync = true;
             logger.info(`Agent: initial sync is complete.`);
-            this.buildIndexes()
-              .then(async () => {
-                logger.info(`Agent: all managed indexes have been created.`);
-                return reenableMempoolCleaning().then(() => {
-                  logger.info('Agent: enabled mempool tracking.');
-                  this.saveInboundTransactions = true;
-                });
+            optionallyEnableSynchronousCommit()
+              .then(() => {
+                logger.debug('Re-enabled synchronous_commit.');
               })
               .catch((err) => {
-                logger.fatal(err);
-                // eslint-disable-next-line @typescript-eslint/no-floating-promises
-                this.shutdown();
+                logger.error(err);
+              })
+              .finally(() => {
+                this.buildIndexes()
+                  .then(async () => {
+                    logger.info(
+                      `Agent: all managed indexes have been created.`
+                    );
+                    return reenableMempoolCleaning().then(() => {
+                      logger.info('Agent: enabled mempool tracking.');
+                      this.saveInboundTransactions = true;
+                    });
+                  })
+                  .catch((err) => {
+                    logger.fatal(err);
+                    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+                    this.shutdown();
+                  });
               });
           }
         } else {
