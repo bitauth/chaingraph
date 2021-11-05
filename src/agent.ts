@@ -477,7 +477,9 @@ export class Agent {
              * Buffer the genesis block for this node (as if it were received over
              * the P2P interface).
              */
-            this.bufferParsedBlock(expectedGenesisBlock, new Date());
+            this.bufferParsedBlock(expectedGenesisBlock, new Date(), [
+              node.name,
+            ]);
           } else if (genesisBlockHeaderFromDb !== expectedGenesisBlock.hash) {
             logger.fatal(
               `Fatal error: attempted to restore chain for node ${node.name}, but the genesis block hash in the database differs from the one provided by the agent. This is likely a configuration error – shutting down to avoid corrupting the database. Block 0 hash expected: ${expectedGenesisBlock.hash} – from database: ${genesisBlockHeaderFromDb}`
@@ -749,8 +751,10 @@ export class Agent {
             this.completedInitialSync = true;
             logger.info(`Agent: initial sync is complete.`);
             optionallyEnableSynchronousCommit()
-              .then(() => {
-                logger.debug('Re-enabled synchronous_commit.');
+              .then((disabled) => {
+                if (disabled) {
+                  logger.debug('Re-enabled synchronous_commit.');
+                }
               })
               .catch((err) => {
                 logger.error(err);
@@ -1217,10 +1221,14 @@ export class Agent {
     });
   }
 
-  bufferParsedBlock(block: ChaingraphBlock, receivedTime: Date) {
+  bufferParsedBlock(
+    block: ChaingraphBlock,
+    receivedTime: Date,
+    acceptedBy?: string[]
+  ) {
     logger.trace(`bufferParsedBlock: ${block.hash}`);
     this.blockBuffer.addBlock(block);
-    this.saveBlock(block, receivedTime)
+    this.saveBlock(block, receivedTime, acceptedBy)
       .then(() => {
         this.scheduleBlockBufferFill();
       })
@@ -1240,14 +1248,18 @@ export class Agent {
    * `node_transaction` table).
    *
    * @param block - the block to save to the database
-   * @param nodeAcceptances - a list of nodes which have accepted this block
+   * @param firstAcceptedAt - the Date at which the block was first announced by
+   * a trusted node (it may have been heard from multiple other nodes before the
+   * block contents finished downloading to the agent)
+   * @param acceptedBy - (only for genesis blocks) the node for which this
+   * genesis block is being saved
    */
-  async saveBlock(block: ChaingraphBlock, firstAcceptedAt: Date) {
+  async saveBlock(
+    block: ChaingraphBlock,
+    firstAcceptedAt: Date,
+    acceptedBy = this.blockTree.getNodesWithBlock(block.hash, block.height)
+  ) {
     logger.trace(`saveBlock: ${block.hash}`);
-    const acceptedBy = this.blockTree.getNodesWithBlock(
-      block.hash,
-      block.height
-    );
 
     const blockTime = blockTimestampToDate(block.timestamp);
     /**
@@ -1265,25 +1277,18 @@ export class Agent {
      * ~12 block window, `accepted_at` times are expected to be accurate.
      */
     const acceptedAt = blockTime > twoHoursAgo() ? firstAcceptedAt : null;
-    const nodeAcceptances = acceptedBy
-      .map((nodeName) => ({
-        acceptedAt,
-        nodeInternalId: this.nodes[nodeName].internalId,
-        nodeName,
-      }))
-      /**
-       * When saving genesis blocks, `internalId` may be `undefined` for other
-       * nodes.
-       */
-      .filter(
-        (
-          acceptance
-        ): acceptance is {
+    const nodeAcceptances = acceptedBy.map(
+      (nodeName) =>
+        ({
+          acceptedAt,
+          nodeInternalId: this.nodes[nodeName].internalId,
+          nodeName,
+        } as {
           acceptedAt: Date | null;
           nodeInternalId: number;
           nodeName: string;
-        } => acceptance.nodeInternalId !== undefined
-      );
+        })
+    );
 
     const startTime = Date.now();
     const { attemptedSavedTransactions, transactionCacheMisses } =

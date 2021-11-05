@@ -1047,6 +1047,8 @@ test.serial('[e2e] syncs remaining blocks one-by-one', async (t) => {
   t.pass();
 });
 
+test.todo('[e2e] simulates syncing against a mid-IBD node');
+
 /**
  * These tests run concurrently after all serial tests have completed. They can
  * also be run independently via `yarn test:e2e:postgres`.

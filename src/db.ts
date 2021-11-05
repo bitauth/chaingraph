@@ -571,19 +571,21 @@ export const optionallyDisableSynchronousCommit = async () => {
 };
 
 /**
- * Re-enable `synchronous_commit` for the database.
+ * Re-enable `synchronous_commit` for the database. (Returns false if
+ * synchronous_commit was not disabled.)
  *
  * See `disableSynchronousCommit` for details.
  */
 export const optionallyEnableSynchronousCommit = async () => {
   if (postgresSynchronousCommit) {
-    return;
+    return false;
   }
   const client = await pool.connect();
   await client.query(
     `DO $$ BEGIN execute 'ALTER DATABASE ' || current_database() || ' SET synchronous_commit TO ON'; END $$;`
   );
   client.release();
+  return true;
 };
 
 /**
