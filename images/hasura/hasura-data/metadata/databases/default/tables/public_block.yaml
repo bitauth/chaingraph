@@ -32,19 +32,42 @@ computed_fields:
       name: block_encoded_hex
       schema: public
   name: encoded_hex
-- comment: ""
-  definition:
+- definition:
     function:
       name: block_fee_satoshis
       schema: public
   name: fee_satoshis
 - definition:
     function:
+      name: block_generated_value_satoshis
+      schema: public
+  name: generated_value_satoshis
+- definition:
+    function:
       name: block_header_encoded_hex
       schema: public
   name: header
-- comment: ""
-  definition:
+- definition:
+    function:
+      name: block_input_count
+      schema: public
+  name: input_count
+- definition:
+    function:
+      name: block_input_value_satoshis
+      schema: public
+  name: input_value_satoshis
+- definition:
+    function:
+      name: block_output_count
+      schema: public
+  name: output_count
+- definition:
+    function:
+      name: block_output_value_satoshis
+      schema: public
+  name: output_value_satoshis
+- definition:
     function:
       name: block_transaction_count
       schema: public

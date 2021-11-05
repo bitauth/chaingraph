@@ -17,8 +17,7 @@ array_relationships:
         name: input
         schema: public
 computed_fields:
-- comment: ""
-  definition:
+- definition:
     function:
       name: output_locking_bytecode_pattern
       schema: public

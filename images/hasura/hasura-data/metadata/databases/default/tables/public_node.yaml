@@ -16,6 +16,12 @@ array_relationships:
       table:
         name: node_transaction
         schema: public
+computed_fields:
+- definition:
+    function:
+      name: node_unconfirmed_transaction_count
+      schema: public
+  name: unconfirmed_transaction_count
 select_permissions:
 - permission:
     allow_aggregations: true

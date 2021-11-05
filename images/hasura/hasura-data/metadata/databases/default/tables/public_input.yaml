@@ -35,8 +35,7 @@ computed_fields:
       name: input_unlocking_bytecode_pattern
       schema: public
   name: unlocking_bytecode_pattern
-- comment: ""
-  definition:
+- definition:
     function:
       name: input_value_satoshis
       schema: public

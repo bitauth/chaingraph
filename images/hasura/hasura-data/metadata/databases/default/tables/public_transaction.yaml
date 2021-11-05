@@ -66,8 +66,7 @@ computed_fields:
       name: transaction_encoded_hex
       schema: public
   name: encoded_hex
-- comment: ""
-  definition:
+- definition:
     function:
       name: transaction_fee_satoshis
       schema: public
@@ -77,26 +76,22 @@ computed_fields:
       name: transaction_identity_output
       schema: public
   name: identity_output
-- comment: ""
-  definition:
+- definition:
     function:
       name: transaction_input_count
       schema: public
   name: input_count
-- comment: ""
-  definition:
+- definition:
     function:
       name: transaction_input_value_satoshis
       schema: public
   name: input_value_satoshis
-- comment: ""
-  definition:
+- definition:
     function:
       name: transaction_output_count
       schema: public
   name: output_count
-- comment: ""
-  definition:
+- definition:
     function:
       name: transaction_output_value_satoshis
       schema: public
