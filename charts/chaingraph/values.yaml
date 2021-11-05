@@ -8,7 +8,7 @@ agent:
   # Manage the Chaingraph agent from this chart.
   enable: true
   # The precise Chaingraph Agent Docker image to use.
-  image: chaingraph/agent@sha256:d500745bc7a644ad8acdd7e0e92b6d90725cb061c946ec71408268a2ba2754ff # a51489d
+  image: chaingraph/agent@sha256:0ab757b2565ed9ae1cf3c3c855a24e14f3f1fd631018067b6097e0d3521067c9 # 37e226b
   # A list of trusted external nodes to which this Chaingraph instance should connect. If specified, this list will be appended to the list of trusted nodes which are managed by this Chaingraph chart.
   # This must be specified using the same format as `CHAINGRAPH_TRUSTED_NODES`, e.g. `bchn:127.0.0.1:8333:mainnet,bchd:127.0.0.1:8334:testnet,another:127.0.0.1:8335:e3e1f3e8`
   externalNodes: ''
@@ -86,7 +86,7 @@ hasura:
   # Enable a local Hasura deployment. Disable this to either manage Hasura manually or use Hasura Cloud.
   enable: true
   # The precise Hasura Docker image to use.
-  image: chaingraph/hasura@sha256:4d44757571418cb08977622f5235164ee061a6bb9eaf9d9d86b739b582bc9aac # 9bc167a
+  image: chaingraph/hasura@sha256:d0560c1fe56bc8e3f6da45425f26d89e6872e5c5589879baa6b86a26ffbf3d44 # 37e226b
   # A secret key used to secure admin access in Hasura. If not provided, a random secret will be generated and stored in the cluster.
   adminSecretKey: ''
   # Enable the console served by Hasura. (Not recommended; use Hasura CLI's `hasura console` instead.)
