@@ -42,7 +42,6 @@ computed_fields:
   name: value_satoshis
 select_permissions:
 - permission:
-    allow_aggregations: true
     columns:
     - transaction_internal_id
     - input_index
@@ -55,4 +54,5 @@ select_permissions:
     - unlocking_bytecode_pattern
     - value_satoshis
     filter: {}
+    limit: 1000
   role: public

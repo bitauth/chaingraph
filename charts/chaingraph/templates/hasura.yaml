@@ -23,7 +23,9 @@ spec:
         name: hasura
         env:
         - name: HASURA_GRAPHQL_DATABASE_URL
-          {{ if .Values.postgres.externalDbUrl }}
+          {{ if .Values.hasura.overrideDbUrl }}
+          value: {{ .Values.hasura.overrideDbUrl }}
+          {{ else if .Values.postgres.externalDbUrl }}
           value: {{ .Values.postgres.externalDbUrl }}
           {{ else }}
           valueFrom:
@@ -34,6 +36,8 @@ spec:
         - name: HASURA_GRAPHQL_METADATA_DATABASE_URL
           {{ if .Values.hasura.metadataDbUrl }}
           value: {{ .Values.hasura.metadataDbUrl }}
+          {{ else if .Values.hasura.overrideDbUrl }}
+          value: {{ .Values.hasura.overrideDbUrl }}
           {{ else if .Values.postgres.externalDbUrl }}
           value: {{ .Values.postgres.externalDbUrl }}
           {{ else }}

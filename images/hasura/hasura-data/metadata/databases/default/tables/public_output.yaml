@@ -24,7 +24,6 @@ computed_fields:
   name: locking_bytecode_pattern
 select_permissions:
 - permission:
-    allow_aggregations: true
     columns:
     - transaction_hash
     - output_index
@@ -33,4 +32,5 @@ select_permissions:
     computed_fields:
     - locking_bytecode_pattern
     filter: {}
+    limit: 5000
   role: public

@@ -29,4 +29,5 @@ select_permissions:
     - authchain_length
     - unspent_authhead
     filter: {}
+    limit: 100
   role: public

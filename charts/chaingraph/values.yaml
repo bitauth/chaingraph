@@ -56,17 +56,17 @@ postgres:
   # If not set, a simple, internal, single-instance Postgres database will be used.
   #
   # It's recommended this be configured to use a managed, highly-available external Postgres database for uptime-critical applications.
-  # For development and lower-cost applications, the default, built-in postgres instance is ideal.
+  # For development and lower-cost applications, the default, built-in Postgres instance is ideal.
   externalDbUrl: ''
   # The precise Postgres Docker image to use.
   # This is only used if `externalDbUrl` is not set.
   image: postgres@sha256:f5b88e89628de59e0cd28b25d7c26ac2f43fdd235c7263aa98ff971898fe9c5f # v14.0
   # The Postgres username to use.
-  # NOTE: this can only be configured from the chart during database creation. If the database already exists, the postgres username/password must be created or updated manually before changing this value.
+  # NOTE: this can only be configured from the chart during database creation. If the database already exists, the Postgres username/password must be created or updated manually before changing this value.
   # This is only used if `externalDbUrl` is not set.
   username: 'chaingraph'
   # The Postgres password to use. If not provided, a random secret will be generated and stored in the cluster.
-  # NOTE: this can only be configured from the chart during database creation. If the database already exists, the postgres username/password must be created or updated manually before changing this value.
+  # NOTE: this can only be configured from the chart during database creation. If the database already exists, the Postgres username/password must be created or updated manually before changing this value.
   # This is only used if `externalDbUrl` is not set.
   password: ''
   # The size of the volume to provision for the internal Postgres database.
@@ -91,6 +91,9 @@ hasura:
   adminSecretKey: ''
   # Enable the console served by Hasura. (Not recommended; use Hasura CLI's `hasura console` instead.)
   enableConsole: false
+  # A Postgres connection string to override the default connection string (used by the agent).
+  # This is useful for e.g. setting a hasura-specific Postgres user with lower `statement_timeout` limits.
+  overrideDbUrl: ''
   # An alternative Postgres database URL in which Hasura metadata should be stored. If not set, metadata will be stored in the configured Postgres database.
   metadataDbUrl: ''
   # Configure a load balancer to serve the GraphQL API at port 80. Disabled by default because most cloud providers charge a monthly price for load balancer usage, and Chaingraph can be tested or used for development without load balancing.

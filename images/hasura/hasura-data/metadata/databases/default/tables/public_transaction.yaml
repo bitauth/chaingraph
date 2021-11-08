@@ -103,7 +103,6 @@ computed_fields:
   name: signing_output
 select_permissions:
 - permission:
-    allow_aggregations: true
     columns:
     - internal_id
     - hash
@@ -119,4 +118,5 @@ select_permissions:
     - output_count
     - output_value_satoshis
     filter: {}
+    limit: 10000
   role: public

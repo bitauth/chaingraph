@@ -10,7 +10,6 @@ object_relationships:
     foreign_key_constraint_on: node_internal_id
 select_permissions:
 - permission:
-    allow_aggregations: true
     columns:
     - internal_id
     - node_internal_id
@@ -18,4 +17,5 @@ select_permissions:
     - accepted_at
     - removed_at
     filter: {}
+    limit: 1000
   role: public

@@ -24,7 +24,6 @@ computed_fields:
   name: unconfirmed_transaction_count
 select_permissions:
 - permission:
-    allow_aggregations: true
     columns:
     - name
     - internal_id
@@ -32,5 +31,8 @@ select_permissions:
     - user_agent
     - first_connected_at
     - latest_connection_began_at
+    computed_fields:
+    - unconfirmed_transaction_count
     filter: {}
+    limit: 1000
   role: public

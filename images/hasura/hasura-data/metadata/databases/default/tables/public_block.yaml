@@ -74,22 +74,27 @@ computed_fields:
   name: transaction_count
 select_permissions:
 - permission:
-    allow_aggregations: true
     columns:
     - internal_id
+    - version
+    - merkle_root
     - hash
     - previous_block_hash
-    - merkle_root
     - height
     - size_bytes
     - timestamp
     - nonce
     - bits
-    - version
     computed_fields:
     - encoded_hex
     - fee_satoshis
+    - generated_value_satoshis
     - header
+    - input_count
+    - input_value_satoshis
+    - output_count
+    - output_value_satoshis
     - transaction_count
     filter: {}
+    limit: 1000
   role: public
