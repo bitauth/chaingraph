@@ -1181,11 +1181,16 @@ export class Agent {
     this.blockBuffer.releaseReservedBlock();
     const durationMs = finishedDownloadAt - download.requestStartTime;
     this.scheduleBlockParse(bitcoreBlock, download.height, (block) => {
-      this.nodes[nodeName].downloadThroughput.addStatistic({
-        durationMs: durationMs === 0 ? 1 : durationMs,
-        metrics: { bytes: block.sizeBytes },
-        startTime: download.requestStartTime,
-      });
+      // eslint-disable-next-line functional/no-try-statement
+      try {
+        this.nodes[nodeName].downloadThroughput.addStatistic({
+          durationMs: durationMs === 0 ? 1 : durationMs,
+          metrics: { bytes: block.sizeBytes },
+          startTime: download.requestStartTime,
+        });
+      } catch (e: unknown) {
+        logger.error(JSON.stringify(e), 'Statistics duration bug.');
+      }
     });
   }
 
