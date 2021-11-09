@@ -86,7 +86,7 @@ hasura:
   # Enable a local Hasura deployment. Disable this to either manage Hasura manually or use Hasura Cloud.
   enable: true
   # The precise Hasura Docker image to use.
-  image: chaingraph/hasura@sha256:d0560c1fe56bc8e3f6da45425f26d89e6872e5c5589879baa6b86a26ffbf3d44 # 37e226b
+  image: chaingraph/hasura@sha256:9853910cda7040640550a13ed6c271b29de1f90e16d52724f2a268f9f777b13c # 64a00f1
   # A secret key used to secure admin access in Hasura. If not provided, a random secret will be generated and stored in the cluster.
   adminSecretKey: ''
   # Enable the console served by Hasura. (Not recommended; use Hasura CLI's `hasura console` instead.)
