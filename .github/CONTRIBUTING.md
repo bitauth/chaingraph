@@ -243,12 +243,6 @@ To debug Postgres functions tested by the e2e tests, see the setup instructions 
 
 > Note: if you're using `yarn local:postgres` and you encounter the error `password authentication failed for user "chaingraph"` after following the above instructions, it's possible that Docker is interfering with the connection between the end-to-end tests and Postgres (even if Postgres is confirmed to be listening on port `5432`). Try restarting Docker while Postgres is running, and the issue may be resolved.
 
-### Inspecting the E2E Test Database
-
-The
-
-postgres://chaingraph:very_insecure_postgres_password@host.k3d.internal:5432/chaingraph_e2e_test
-
 # Development Tips
 
 This section is used to offer useful advice and document unintuitive behaviors for new contributors.
@@ -268,6 +262,12 @@ kubectl describe pod <pod-name>
 ```
 
 Replace `<pod-name>` with the name of the pod returned by `get pods`.
+
+### Networking Issues
+
+Occasionally, local networking on a development machine will exhibit unexpected behavior while Docker is running, e.g. **web servers, local Postgres databases, and other applications apparently listening but not responding on local ports**.
+
+Particularly for development clusters running on non-linux machines, a surprising number of networking issues can be resolved by either **restarting Docker or restarting the host machine**.
 
 ### Docker Disk Pressure Issue (`NodeHasDiskPressure`)
 
@@ -301,7 +301,7 @@ After making changes in Hasura, if you re-create the Postgres database, you will
 yarn dev-cluster:reset:local
 ```
 
-This will destroy and recreate the cluster, recreate the local `chaingraph/hasura` image, push the new image to the cluster, and re-deploy Chaingraph. Also, please consider [squashing migrations](https://hasura.io/docs/1.0/graphql/core/hasura-cli/hasura_migrate_squash.html) into a single migration.
+This will destroy and recreate the cluster, recreate the local `chaingraph/hasura` image, push the new image to the cluster, and re-deploy Chaingraph. Also, please consider [squashing migrations](https://hasura.io/docs/latest/graphql/core/hasura-cli/hasura_migrate_squash.html) into a single migration.
 
 ## Using PgAdmin
 
@@ -351,6 +351,16 @@ yarn local:postgres
 # Once the database has restarted, run the remaining configuration script:
 yarn local:postgres:configure-pghero-step-2
 ```
+
+## Using Prod-Sim Scripts
+
+A set of scripts attempt to simulate a production installation as closely as possible by building all images locally. This can be useful for debugging Kubernetes networking and configuration issues. See the relevant scripts for details:
+
+```
+grep "prod-sim" package.json
+```
+
+Note, `prod-sim` clusters are often much slower than the above `local` configurations on non-Linux operation systems (as all containers must run in VMs).
 
 # Notes on Design Decisions
 

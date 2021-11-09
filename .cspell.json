@@ -4,6 +4,8 @@
   "language": "en",
   "words": [
     "Admin's",
+    "authchain",
+    "authchains",
     "backoff",
     "bchd",
     "bchn",
@@ -31,6 +33,8 @@
     "getblocks",
     "getdata",
     "getheaders",
+    "GraphiQL",
+    "graphqurl",
     "hasura",
     "hasura's",
     "indexdef",
