@@ -1,3 +1,5 @@
+import { logger } from '../logging';
+
 const roundToDefault = 100;
 export const bytesToClosestUnit = (bytes: number, roundTo = roundToDefault) => {
   const unitDivisor = 1_000;
@@ -102,12 +104,11 @@ export class ThroughputStatistics<Metrics extends { [type: string]: number }> {
     metrics: Metrics;
   }) {
     if (durationMs < 1) {
-      // eslint-disable-next-line functional/no-throw-statement
-      throw new Error(
-        `A statistic duration may be no less than 1. startTimestamp: ${startTime} | durationMs: ${durationMs} | ${JSON.stringify(
-          metrics
-        )}`
+      logger.warn(
+        { durationMs, metrics, startTime },
+        'Statistic duration bug: attempted to add a statistic with a duration less than 1.'
       );
+      return;
     }
     this.statistics.push({ durationMs, metrics, startTime });
   }

@@ -383,17 +383,23 @@ test('ThroughputStatistics: test highly-stacked statistics', (t) => {
   });
 });
 
-test('ThroughputStatistics throws when a statistic of duration 0ms is added', (t) => {
+test('ThroughputStatistics ignores statistics of duration less than 1', (t) => {
   const stats = new ThroughputStatistics(() => ({ unit: 0 }), fiveMinutesInMs);
-
   const a = stats.startStatistic(now);
-  t.throws(
-    () => {
-      stats.stopStatistic(a, now, { unit: 1 });
+  stats.stopStatistic(a, now, { unit: 1 });
+  t.deepEqual(stats.aggregateStatistics(now), {
+    activeDuration: 0,
+    average: {
+      concurrency: 0,
+      duration: 0,
+      perActiveSecond: {
+        unit: 0,
+      },
     },
-    {
-      message:
-        'A statistic duration may be no less than 1. startTimestamp: 1 | durationMs: 0 | {"unit":1}',
-    }
-  );
+    statisticsCount: 0,
+    timeline: [],
+    totals: {
+      unit: 0,
+    },
+  });
 });
