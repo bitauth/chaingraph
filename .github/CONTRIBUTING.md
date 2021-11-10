@@ -2,6 +2,8 @@
 
 Thanks for your interest in contributing to Chaingraph! This guide should help you get started quickly.
 
+Please also join us on the [`Chaingraph Dev` Telegram chat group](https://t.me/chaingraph_dev).
+
 ## Install Node.js dependencies
 
 In addition to [Node.js](https://nodejs.org/), you'll need [Yarn](https://yarnpkg.com/getting-started/install) for Node.js dependency management.

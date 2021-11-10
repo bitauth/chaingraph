@@ -13,7 +13,6 @@ For more information, and for examples of live subscriptions and complex queries
 
 <a href="https://youtu.be/kYVVfiH6CVc"><img width="400" alt="chaingraph-demo-video" src="https://user-images.githubusercontent.com/904007/141193737-9c24f98c-8330-4ea4-afe4-7498ee0730b9.png"></a>
 
-
 ## Quick Start
 
 Chaingraph runs on [Kubernetes](https://kubernetes.io/), making it easy to deploy for production usage across many cloud providers or on self-managed hardware.
