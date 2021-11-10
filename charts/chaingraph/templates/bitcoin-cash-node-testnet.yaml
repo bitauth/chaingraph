@@ -24,7 +24,7 @@ spec:
         image: {{ .Values.bitcoinCashNodeTestnet.image | default .Values.bitcoinCashNode.image }}
         env:
         - name: APPEND_TO_BITCOIN_CONF
-          value: "disablewallet=1\nwhitelist=0.0.0.0/0\ntestnet4=1"
+          value: "disablewallet=1\nwhitelist=0.0.0.0/0\ntestnet4=1\nseednode=136.49.183.215\nseednode=96.231.250.25\nseednode=77.95.229.240\nseednode=193.135.10.219\nseednode=64.227.26.170" # seednodes are provided because testnet4 DNS seeding isn't yet reliable
         ports:
           - containerPort: 28333
             name: testnet-p2p
