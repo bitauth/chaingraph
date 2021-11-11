@@ -107,6 +107,8 @@ Learn more about [Chaingraph's Architecture &rarr;](./docs/architecture.md)
 
 ## Schema
 
+<img align="right" height="300" src="./docs/schema.png"/>
+
 While many indexers are designed to support only one node implementation, Chaingraph is designed from the ground up to support multiple nodes.
 
 Rather than assuming a single-node source-of-truth view of the network, the Chaingraph database schema and GraphQL API differentiate which nodes have acknowledged any particular transaction or block, and a full timeline is maintained for transaction validation, block acceptance, observed double-spends, and block re-organizations.
