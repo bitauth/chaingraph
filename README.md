@@ -105,6 +105,8 @@ Chaingraph is a Kubernetes application which manages a stack of open source soft
 
 Learn more about [Chaingraph's Architecture &rarr;](./docs/architecture.md)
 
+<img src="./docs/architecture.svg" />
+
 ## Schema
 
 <img align="right" height="300" src="./docs/schema.png"/>

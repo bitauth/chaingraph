@@ -2,6 +2,8 @@
 
 Chaingraph is a [Kubernetes](https://kubernetes.io/) application which can be installed using [Helm](https://helm.sh/). The primary application component – the Chaingraph agent – connects to a set of trusted nodes using the standard P2P network protocol, writing all blocks and transactions relayed by those nodes to a [Postgres SQL](https://www.postgresql.org/) database. Separately, one or more [Hasura](https://hasura.io/) instances handle user API requests by reading from the Postgres database.
 
+<img src="./architecture.svg" />
+
 ### Default Configuration
 
 By default the Chaingraph chart automatically deploys all necessary application components to the most appropriate Kubernetes node(s): a testnet BCHN node and persistent storage volume, a Postgres database and persistent storage volume, a Hasura instance, and the agent instance.
