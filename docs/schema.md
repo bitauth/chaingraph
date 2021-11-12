@@ -39,10 +39,82 @@ For this reason, the database schema includes triggers which serve to prevent va
 
 The Chaingraph database **requires approximately 300% of raw blockchain size** (approximately the base storage space required by the Satoshi implementation without `txindex`). Up to ~10% of this overhead is due to less storage-efficient integers in Postgres ([`bigint` is the minimum-sized column](../.github/CONTRIBUTING.md#use-of-bigint-for-uint32-in-postgres)), and the remaining overhead is due to required indexes – primary keys and indexes which enable fast lookups by hash, height, locking bytecode, and spent output.
 
-Immediately after the initial sync, Chaingraph attempts to build any missing required indexes – depending on the memory available to Postgres, index building can require significantly more storage space than is ultimately needed after index creation. To accommodate, it can be valuable to allocate ~20% of additional storage space for initial indexing (and future expansion), for a total of ~320% of raw blockchain size.
+Immediately after the initial sync, Chaingraph attempts to build any missing required indexes – depending on the memory available to Postgres, **index building can require significantly more storage space than is ultimately needed after index creation**. To accommodate, it can be valuable to allocate ~20% of additional storage space for initial indexing (and future expansion), for a total of ~320% of raw blockchain size.
 
 _For example, as of October 2021, archival, mainnet [BCHN](https://bitcoincashnode.org/) full nodes required ~191 GB, while Chaingraph's Postgres database required ~574 GB. Given the 320% target, the recommended Postgres volume size was at least ~611 GB to sync a new Chaingraph deployment._
 
 If index creation fails, Chaingraph will restart and try again – simply [expand the volume](../charts/chaingraph/readme.md#expanding-volumes) provisioned to Postgres, and index creation should complete successfully.
 
 Multi-node, multi-chain deployments share common history, so only divergent blocks require additional block space. Independent transaction validation and block acceptance histories are stored for each node, increasing storage requirements by a negligible amount. (Additional `node_block` records require `16 bytes * block count` bytes per node – about 10 MB on BCH mainnet, and `node_transaction` records require `24 bytes * mempool TX count` per node – about 2.5 MB for 100,000 transactions.)
+
+### BCH Mainnet Space Usage
+
+This section is periodically updated to provide approximate storage usage information for all default tables and indexes. Actual storage usage will be affected by file system compression and Postgres vacuuming progress. (Vacuuming frees wasted space in the database, so storage usage will fall in the hours/days after initial sync as the database reclaims unused space. The Postgres `VACUUM FULL` command locks the table and performs this compression immediately.)
+
+The below table is derived from the [`/space` view in `pgHero`](../.github/CONTRIBUTING.md#using-pghero) on a recently-vacuumed Chaingraph Postgres database synced with only a single, mainnet BCH node.
+
+_**Last Update**: 2021-11-11_
+
+| Relation                      | Size               |
+| ----------------------------- | ------------------ |
+| input                         | 176 GB             |
+| output                        | 100 GB             |
+| output_pkey                   | 78.3 GB            |
+| spent_by_index                | 52 GB              |
+| transaction                   | 35.3 GB            |
+| input_pkey                    | 32.2 GB            |
+| transaction_hash_key          | 24.8 GB            |
+| output_search_index           | 19.7 GB            |
+| block_transaction             | 16.9 GB            |
+| block_transaction_pkey        | 10.9 GB            |
+| block_inclusions_index        | 7.26 GB            |
+| transaction_pkey              | 7.25 GB            |
+| block                         | 131 MB             |
+| block_hash_key                | 52.9 MB            |
+| node_block                    | 33.5 MB            |
+| node_block_pkey               | 21.5 MB            |
+| block_height_index            | 15.3 MB            |
+| block_internal_id_key         | 15.3 MB            |
+| block_pkey                    | 15.3 MB            |
+| node                          | 16 KB              |
+| node_internal_id_key          | 16 KB              |
+| node_name_key                 | 16 KB              |
+| node_pkey                     | 16 KB              |
+| node_transaction              | varies<sup>1</sup> |
+| node_transaction_pkey         | varies<sup>1</sup> |
+| node_transaction_history      | varies<sup>2</sup> |
+| node_transaction_history_pkey | varies<sup>2</sup> |
+| node_block_history            | varies<sup>3</sup> |
+| node_block_history_pkey       | varies<sup>3</sup> |
+
+- Average Transactions Per Day (Jan - Nov 2021): **~168,000 transactions/day**
+- Average Transaction Size (Jan - Nov 2021): **439 bytes**
+- Average Transaction Throughput Per Day (Jan - Nov 2021): **~74 MB**
+
+<details><summary>SQL</summary>
+
+```sql
+SELECT (COUNT(*) / DATE_PART('doy', now())) AS avg_tx_per_day
+  FROM block_transaction WHERE block_transaction.block_internal_id IN
+    (SELECT block.internal_id FROM block
+      WHERE block.timestamp >
+        extract(epoch from TO_TIMESTAMP(DATE_PART('year', now())::text, 'YYYY')::timestamp AT time zone 'UTC'));
+```
+
+```sql
+SELECT
+  AVG(transaction.size_bytes) AS avg_tx_bytes,
+  (SUM(transaction.size_bytes) / DATE_PART('doy', now())) AS avg_tx_bytes_per_day
+  FROM transaction
+    JOIN block_transaction ON transaction.internal_id = block_transaction.transaction_internal_id
+  WHERE block_transaction.block_internal_id IN
+    (SELECT block.internal_id FROM block
+      WHERE block.timestamp >
+        extract(epoch from TO_TIMESTAMP(DATE_PART('year', now())::text, 'YYYY')::timestamp AT time zone 'UTC'));
+```
+
+</details>
+
+1. The `node_transaction` table represents the current mempool of each node, and rows are moved to `node_transaction_history` upon transaction confirmation. It will typically hold between zero and a few MBs.
+2. The `node_transaction_history` table grows at a rate of 32-40 bytes per node per transaction in which Chaingraph was online when the transaction was heard on the network (saving a `validated_at` timestamp and occasionally a `replaced_at` timestamp). **At the 2021 average throughput of ~168,000 daily transactions, this adds approximately 6 MB per day that Chaingraph has been running**. `node_transaction_history_pkey` is a unique index on a `bigint` field adding approx. 25% of the size of `node_transaction_history`.
+3. `node_block_history` is exceptionally rare. Unless you're operating Chaingraph on a test network with regular block chain re-organizations, this table (and the `node_block_history_pkey` index) will require no meaningful storage space.
