@@ -4,7 +4,7 @@ For detailed information on the Bitcoin Cash specification, check out [reference
 
 ## Determining a Cash Address from an input
 
-Chaingraph provides access to direct Blockchain determined, but many use cases will require some more user friendly wrapping. For instance, the GraphQL schema provides access to an input's `locking_bytecode`, but not the corresponding CashAddress. See Reference.cash for more [about locking scripts](https://reference.cash/protocol/blockchain/transaction/locking-script).
+Chaingraph provides access to direct Blockchain information with some indexing and help, but many use cases will require further user friendly wrapping. For instance, the GraphQL schema provides access to an input's `locking_bytecode`, but not the corresponding CashAddress. See Reference.cash for more [about locking scripts](https://reference.cash/protocol/blockchain/transaction/locking-script).
 
 Example GraphQl call fetching information for transaction `7b1f7a00736c7d4ae0b011fa9544e5fd36a71bf139f9c57920f7f8e6d54a578e` ([transaction on Blockchair.com](https://blockchair.com/bitcoin-cash/transaction/7b1f7a00736c7d4ae0b011fa9544e5fd36a71bf139f9c57920f7f8e6d54a578e)). Note the `\\x` prefix required by the GraphQL API.
 
@@ -12,9 +12,13 @@ Try it yourself at [try.chaingraph.cash](https://try.chaingraph.cash/).
 
 ```
 query GetTransactionDetails {
-  transaction(where: { hash: { _eq:
-  "\\x7b1f7a00736c7d4ae0b011fa9544e5fd36a71bf139f9c57920f7f8e6d54a578e"
-  } } ) {
+  transaction(
+    where: {
+      hash: {
+        _eq: "\\x7b1f7a00736c7d4ae0b011fa9544e5fd36a71bf139f9c57920f7f8e6d54a578e"
+      }
+    }
+  ) {
     hash
     inputs {
       outpoint {
@@ -56,6 +60,7 @@ The `locking_bytecode` from each input can then be be translated to a CashAddres
 ```
 import libauth from "@bitauth/libauth"
 
+// Note again, exclusion of `\\x` prefix
 const input1LockingBytecode = "76a914c3b6a8a716bc001eda8a31ec04954a4b5c86a42b88ac";
 libauth.lockingBytecodeToCashAddress(
   libauth.hexToBin(input1LockingBytecode),
