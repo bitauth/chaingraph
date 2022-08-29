@@ -10,7 +10,7 @@ Example GraphQl call fetching information for transaction `7b1f7a00736c7d4ae0b01
 
 Try it yourself at [try.chaingraph.cash](https://try.chaingraph.cash/).
 
-```
+```gql
 query GetTransactionDetails {
   transaction(
     where: {
@@ -31,7 +31,7 @@ query GetTransactionDetails {
 
 Returns:
 
-```
+```gql
 {
   "data": {
     "transaction": [
@@ -57,7 +57,7 @@ Returns:
 
 The `locking_bytecode` from each input can then be be translated to a CashAddress using [libauth](https://github.com/bitauth/libauth).
 
-```
+```js
 import libauth from "@bitauth/libauth"
 
 // Note again, exclusion of `\\x` prefix
