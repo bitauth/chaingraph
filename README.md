@@ -121,7 +121,7 @@ Learn more about [Chaingraph's API Schema &rarr;](./docs/schema.md)
 
 ## New Developers
 
-New developers to Chaingraph, Bitcoin Cash or blockchain development generally may benefit from some initial introductory information. See [Helpful Tips](./docs/helpful-tips.md)
+New developers to Chaingraph, Bitcoin Cash or blockchain development generally may benefit from some initial introductory information. See [Helpful Tips](./docs/helpful-tips.md).
 
 ## Contributing
 
