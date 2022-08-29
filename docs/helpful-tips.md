@@ -8,6 +8,8 @@ Chaingraph provides access to direct Blockchain determined, but many use cases w
 
 Example GraphQl call fetching information for transaction `7b1f7a00736c7d4ae0b011fa9544e5fd36a71bf139f9c57920f7f8e6d54a578e` ([transaction on Blockchair.com](https://blockchair.com/bitcoin-cash/transaction/7b1f7a00736c7d4ae0b011fa9544e5fd36a71bf139f9c57920f7f8e6d54a578e)). Note the `\\x` prefix required by the GraphQL API.
 
+Try it yourself at [try.chaingraph.cash](https://try.chaingraph.cash/).
+
 ```
 query GetTransactionDetails {
   transaction(where: { hash: { _eq:
