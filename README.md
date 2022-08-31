@@ -119,6 +119,10 @@ This additional information makes it possible for businesses to handle unusual n
 
 Learn more about [Chaingraph's API Schema &rarr;](./docs/schema.md)
 
+## New Developers
+
+New developers to Chaingraph, Bitcoin Cash or blockchain development generally may benefit from some initial introductory information. See [Helpful Tips](./docs/helpful-tips.md).
+
 ## Contributing
 
 To set up a local cluster for development, please see the [Contributing Guide](./.github/CONTRIBUTING.md).
