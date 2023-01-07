@@ -1,4 +1,4 @@
-[![CI](https://img.shields.io/github/workflow/status/bitauth/chaingraph/Lint,%20Build,%20and%20Test%20Chaingraph?logo=github)](https://github.com/bitauth/chaingraph/actions/workflows/ci.yaml)
+[![CI](https://img.shields.io/github/actions/workflow/status/bitauth/chaingraph/ci.yaml?branch=master)](https://github.com/bitauth/chaingraph/actions/workflows/ci.yaml)
 [![Codecov](https://img.shields.io/codecov/c/gh/bitauth/chaingraph?token=apQgrFecL5)](https://app.codecov.io/gh/bitauth/chaingraph/)
 [![Follow Chaingraph on Twitter](https://img.shields.io/badge/follow-chaingraph-1DA1F2?logo=twitter)](https://twitter.com/ChaingraphCash)
 [![Join Chat on Telegram](https://img.shields.io/badge/chat-Chaingraph%20Devs-0088CC?logo=telegram)](https://t.me/chaingraph_dev)
