@@ -2,35 +2,35 @@ table:
   name: output
   schema: public
 object_relationships:
-- name: transaction
-  using:
-    foreign_key_constraint_on: transaction_hash
+  - name: transaction
+    using:
+      foreign_key_constraint_on: transaction_hash
 array_relationships:
-- name: spent_by
-  using:
-    manual_configuration:
-      column_mapping:
-        output_index: outpoint_index
-        transaction_hash: outpoint_transaction_hash
-      insertion_order: null
-      remote_table:
-        name: input
-        schema: public
+  - name: spent_by
+    using:
+      manual_configuration:
+        column_mapping:
+          output_index: outpoint_index
+          transaction_hash: outpoint_transaction_hash
+        insertion_order: null
+        remote_table:
+          name: input
+          schema: public
 computed_fields:
-- definition:
-    function:
-      name: output_locking_bytecode_pattern
-      schema: public
-  name: locking_bytecode_pattern
+  - name: locking_bytecode_pattern
+    definition:
+      function:
+        name: output_locking_bytecode_pattern
+        schema: public
 select_permissions:
-- permission:
-    columns:
-    - transaction_hash
-    - output_index
-    - value_satoshis
-    - locking_bytecode
-    computed_fields:
-    - locking_bytecode_pattern
-    filter: {}
-    limit: 5000
-  role: public
+  - role: public
+    permission:
+      columns:
+        - transaction_hash
+        - output_index
+        - value_satoshis
+        - locking_bytecode
+      computed_fields:
+        - locking_bytecode_pattern
+      filter: {}
+      limit: 5000

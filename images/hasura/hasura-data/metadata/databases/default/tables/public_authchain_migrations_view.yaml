@@ -2,17 +2,17 @@ table:
   name: authchain_migrations_view
   schema: public
 computed_fields:
-- definition:
-    function:
-      name: authchain_migration_transaction
-      schema: public
-  name: transaction
+  - name: transaction
+    definition:
+      function:
+        name: authchain_migration_transaction
+        schema: public
 select_permissions:
-- permission:
-    columns:
-    - authbase_internal_id
-    - migration_index
-    - migration_transaction_internal_id
-    filter: {}
-    limit: 1000
-  role: public
+  - role: public
+    permission:
+      columns:
+        - authbase_internal_id
+        - migration_index
+        - migration_transaction_internal_id
+      filter: {}
+      limit: 1000

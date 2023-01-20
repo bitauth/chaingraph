@@ -1,7 +1,7 @@
 /* eslint-disable camelcase, @typescript-eslint/naming-convention */
 import test from 'ava';
 
-import { computeIndexCreationProgress, indexDefinitions } from './db-utils';
+import { computeIndexCreationProgress, indexDefinitions } from './db-utils.js';
 
 test('computeIndexCreationProgress: single index, phase: "building index: scanning table" 10%', async (t) => {
   const result = computeIndexCreationProgress([

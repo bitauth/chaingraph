@@ -1,6 +1,14 @@
-actions: []
+actions:
+  - name: send_transaction
+    definition:
+      kind: synchronous
+      handler: '{{WEBHOOK_HANDLER_BASE_URL}}/send-transaction'
+      timeout: 3
+    comment: Send an encoded transaction to the requested node for broadcast to the network.
 custom_types:
   enums: []
-  input_objects: []
-  objects: []
+  input_objects:
+    - name: SendTransactionRequest
+  objects:
+    - name: SendTransactionResult
   scalars: []

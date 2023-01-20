@@ -9,9 +9,8 @@ declare module '@chaingraph/bitcore-p2p-cash' {
     Transaction,
   } from 'bitcore-lib-cash';
   import type bitcoreModule from 'bitcore-lib-cash';
-  import type StrictEventEmitter from 'strict-event-emitter-types';
+  import type { StrictEventEmitter } from 'strict-event-emitter-types';
 
-  // eslint-disable-next-line @typescript-eslint/init-declarations
   export const internalBitcore: typeof bitcoreModule;
 
   export type {
@@ -119,6 +118,10 @@ declare module '@chaingraph/bitcore-p2p-cash' {
     };
 
     bestHeight: number;
+
+    host: string;
+
+    port: number;
 
     version: number;
 

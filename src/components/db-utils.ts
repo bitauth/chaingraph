@@ -11,18 +11,18 @@ export const indexDefinitions = {
  * Based on the typical Chaingraph workload, the table scanning phase of index
  * building is counted as 40% of progress, while the 'loading tuples in tree'
  * phase is counted as the remaining 60%. Because there is a pause between these
- * step which can't be measured, this method will briefly return `4*` until
+ * step which can't be measured, this method will briefly return `40` until
  * tuple loading has begun.
  */
 export const computeIndexCreationProgress = (
   progressQueryResult: {
     query: string;
-    /* eslint-disable camelcase, @typescript-eslint/naming-convention */
+    /* eslint-disable @typescript-eslint/naming-convention */
     blocks_done: string;
     blocks_total: string;
     tuples_done: string;
     tuples_total: string;
-    /* eslint-enable camelcase, @typescript-eslint/naming-convention */
+    /* eslint-enable @typescript-eslint/naming-convention */
   }[]
 ) => {
   const tableScanningPhasePercent = 40;
@@ -35,21 +35,23 @@ export const computeIndexCreationProgress = (
       if (indexName === undefined) {
         return undefined;
       }
-      return [
-        indexName,
+      const rawResult =
         row.tuples_total === '0'
           ? Math.round(
               (Number(row.blocks_done) / Number(row.blocks_total)) *
                 tableScanningPhasePercent
             ).toString()
           : row.tuples_done === '0'
-          ? '4*'
+          ? '40'
           : Math.round(
               (Number(row.tuples_done) / Number(row.tuples_total)) *
                 tupleLoadingPhasePercent +
                 tableScanningPhasePercent
-            ).toString(),
-      ] as [keyof typeof indexDefinitions, string];
+            ).toString();
+      return [indexName, rawResult === 'NaN' ? '0' : rawResult] as [
+        keyof typeof indexDefinitions,
+        string
+      ];
     })
     .filter(
       (progressItem): progressItem is [keyof typeof indexDefinitions, string] =>

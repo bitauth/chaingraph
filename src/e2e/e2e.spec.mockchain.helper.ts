@@ -1,29 +1,26 @@
+/**
+ * The "mockchain" produced by this module is very simplistic and serves only to
+ * test data storage – inputs do not spend prior outputs and transactions are
+ * not intended to be valid.
+ *
+ * TODO: simulate realistic wallets to create common types of valid transactions
+ */
+
 import type { AuthenticationInstruction } from '@bitauth/libauth';
 import {
   authenticationInstructionsAreMalformed,
-  parseBytecode,
+  decodeAuthenticationInstructions,
+  encodeAuthenticationInstruction,
   range,
-  serializeAuthenticationInstruction,
 } from '@bitauth/libauth';
 import type { BitcoreBlock } from '@chaingraph/bitcore-p2p-cash';
-import { Peer } from '@chaingraph/bitcore-p2p-cash';
+import bitcoreP2pCash from '@chaingraph/bitcore-p2p-cash';
 import type { BitcoreTransactionObjectOptions } from 'bitcore-lib-cash';
-import Prando from 'prando';
 
-/**
- * Unfortunately, this is the least-bad way of getting access to the `Block` and
- * `Transaction` classes used within `bitcore-p2p-cash`. By importing from
- * `bitcore-lib-cash`, we avoid any chance of having multiple instances of
- * `bitcore-lib-cash`: https://github.com/bitpay/bitcore/issues/1457
- *
- * This solution continues working even when testing modifications to the
- * underlying `bitcore-lib-cash` used in this project.
- */
-const { messages } = new Peer({});
+import { Prando } from './prando.js';
+
 // eslint-disable-next-line @typescript-eslint/naming-convention
-export const { Block } = new messages.Block();
-// eslint-disable-next-line @typescript-eslint/naming-convention
-export const { Transaction } = new messages.Transaction();
+export const { Block, Transaction } = bitcoreP2pCash.internalBitcore;
 
 const prandoSeed = 1;
 const prando = new Prando(prandoSeed);
@@ -48,41 +45,66 @@ const maxInputs = 10;
 const maxOutputs = 10;
 const maxScriptLength = 200;
 const maxSatoshis = 100_000_000;
+const hashLength = 32;
 
 /**
  * Generate a random parsable script (without malformed push instructions)
  */
 const genScript = () => {
   const randomBytes = getBytes(prando.nextInt(1, maxScriptLength));
-  const parsed = parseBytecode(randomBytes);
+  const parsed = decodeAuthenticationInstructions(randomBytes);
   if (authenticationInstructionsAreMalformed(parsed)) {
     const withoutMalformedInstruction = parsed.slice(
       0,
       -1
     ) as unknown as AuthenticationInstruction;
-    return serializeAuthenticationInstruction(withoutMalformedInstruction);
+    return encodeAuthenticationInstruction(withoutMalformedInstruction);
   }
   return randomBytes;
 };
+const genScriptWithoutTokenPrefix = (): Uint8Array => {
+  const attempt = genScript();
+  const PREFIX_TOKEN = 239;
+  return attempt[0] === PREFIX_TOKEN ? genScriptWithoutTokenPrefix() : attempt;
+};
+const capabilities = ['none', 'mutable', 'minting'];
+const maxCommitmentLength = 40;
 const genOutputs = () =>
   range(prando.nextInt(1, maxOutputs)).map(() => ({
     satoshis: prando.nextInt(0, maxSatoshis),
-    script: genScript(),
+    script: genScriptWithoutTokenPrefix(),
+    ...(prando.nextBoolean()
+      ? {}
+      : {
+          tokenData: prando.nextBoolean()
+            ? {
+                amount: prando.nextInt(1, Number.MAX_SAFE_INTEGER),
+                category: getBytes(hashLength),
+              }
+            : {
+                amount: prando.nextBoolean()
+                  ? prando.nextInt(1, Number.MAX_SAFE_INTEGER)
+                  : 0,
+                category: getBytes(hashLength),
+                nft: {
+                  capability:
+                    capabilities[prando.nextInt(0, capabilities.length)],
+                  commitment: getBytes(prando.nextInt(0, maxCommitmentLength)),
+                },
+              },
+        }),
   }));
-
-const hashLength = 32;
 
 export const generateMockDoubleSpend = (
   inputs: BitcoreTransactionObjectOptions['inputs'],
   onlyOne: boolean
-) => {
-  return new Transaction({
-    inputs: onlyOne ? [inputs[0]] : inputs,
+) =>
+  new Transaction({
+    inputs: onlyOne ? [inputs[0]!] : inputs,
     nLockTime: getUint32(),
     outputs: genOutputs(),
     version: getInt32(),
   });
-};
 
 const generateBlock = ({
   previousBlockHash,
@@ -97,7 +119,7 @@ const generateBlock = ({
         outputIndex: 4294967295,
         prevTxId:
           '0000000000000000000000000000000000000000000000000000000000000000',
-        script: genScript(),
+        script: genScriptWithoutTokenPrefix(),
         sequenceNumber: 4294967295,
       },
     ],
@@ -112,7 +134,7 @@ const generateBlock = ({
       inputs: range(prando.nextInt(1, maxInputs)).map(() => ({
         outputIndex: getUint32(),
         prevTxId: getBytes(hashLength),
-        script: genScript(),
+        script: genScriptWithoutTokenPrefix(),
         sequenceNumber: getUint32(),
       })),
       nLockTime: getUint32(),
@@ -154,7 +176,7 @@ export const generateMockchain = ({
   const chain: BitcoreBlock[] = [];
   // eslint-disable-next-line functional/no-loop-statement
   while (chain.length < length) {
-    const lastBlock = chain[chain.length - 1] as BitcoreBlock | undefined;
+    const lastBlock = chain[chain.length - 1];
     const prevBlockHash = lastBlock?.header.hash ?? previousBlockHash;
     const block = generateBlock({
       previousBlockHash: prevBlockHash,
@@ -203,3 +225,9 @@ export const halTxSpent =
 
 export const halTxSpentRaw =
   '0100000001169e1e83e930853391bc6f35f605c6754cfead57cf8387639d3b4096c54f18f400000000484730440220576497b7e6f9b553c0aba0d8929432550e092db9c130aae37b84b545e7f4a36c022066cb982ed80608372c139d7bb9af335423d5280350fe3e06bd510e695480914f01ffffffff0100ca9a3b000000001976a914340cfcffe029e6935f4e4e5839a2ff5f29c7a57188ac00000000';
+
+export const chipnetCashTokensTxHash =
+  'a0152b142c7acafbc2af757754797dfde62582db3ed0edd380a0e977cae0f777';
+
+export const chipnetCashTokensTx =
+  '02000000020f8f33f03ab5f1b730e0f3d16b48e436d9ea4439a021be2c30b707768a7b6c8500000000644193a6da81a0e8b450da0c4b7cb0f902fbaecbff9854757b254b33b5e23dc2177c2b9e415330db601b19ae10e5a7fc457a5f940dd86d024f7f7dcaa6e7d34d7ecf61210286a8bcf759f185897babfc08d69c84dcc627fa70f8952d4152f1f6afb186fd3b00000000c7ed9d1a3b65dc43109117f426ae8b516c23ffdc445803819131cae22fbd293a000000006441f871109bf0dbf8a44a57cf7e534ddb76fe4f4f84c06f598d2244cf99bb7346d0fad90a9ea3770b2fc668a2a4ecf7ac89c4480127655009e13a6c4ae583cea85c61210286a8bcf759f185897babfc08d69c84dcc627fa70f8952d4152f1f6afb186fd3b0000000009a08601000000000042efc7ed9d1a3b65dc43109117f426ae8b516c23ffdc445803819131cae22fbd293a31ff08fefefffeffff7fa91406c841f122afb58b095c30e238e769bf082244da8710270000000000006eef0f8f33f03ab5f1b730e0f3d16b48e436d9ea4439a021be2c30b707768a7b6c85622801020304050607080910111213141516171819202122232425262728293031323334353637383940aa206f906e2c68bce70eed90113203158cae49f072ac7a3a02257ba76be68a80db1f8710270000000000006eefc7ed9d1a3b65dc43109117f426ae8b516c23ffdc445803819131cae22fbd293a10feffffffff52210286a8bcf759f185897babfc08d69c84dcc627fa70f8952d4152f1f6afb186fd3b21028e068c5cd8de3e20625f3df40aa5a84d97552f326001160c793a0eb78b5e7f2c52ae10270000000000003eefc7ed9d1a3b65dc43109117f426ae8b516c23ffdc445803819131cae22fbd293a10fdffff76a914c5eb5dde0efe57884810d3e5ada12c6ada6a06b188ac102700000000000048efc7ed9d1a3b65dc43109117f426ae8b516c23ffdc445803819131cae22fbd293a10fdfd00210286a8bcf759f185897babfc08d69c84dcc627fa70f8952d4152f1f6afb186fd3bac102700000000000046efc7ed9d1a3b65dc43109117f426ae8b516c23ffdc445803819131cae22fbd293a10fc210286a8bcf759f185897babfc08d69c84dcc627fa70f8952d4152f1f6afb186fd3bac204e00000000000041efc7ed9d1a3b65dc43109117f426ae8b516c23ffdc445803819131cae22fbd293a600568656c6c6f76a914c5eb5dde0efe57884810d3e5ada12c6ada6a06b188ace80300000000000040efc7ed9d1a3b65dc43109117f426ae8b516c23ffdc445803819131cae22fbd293a6004f09f8c8e76a914c5eb5dde0efe57884810d3e5ada12c6ada6a06b188ac0000000000000000116a04010101010a43617368546f6b656e7300000000';

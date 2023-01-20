@@ -1,4 +1,4 @@
-import { logger } from '../logging';
+import { instances } from '../logging.js';
 
 const roundToDefault = 100;
 export const bytesToClosestUnit = (bytes: number, roundTo = roundToDefault) => {
@@ -14,7 +14,7 @@ export const bytesToClosestUnit = (bytes: number, roundTo = roundToDefault) => {
     unit += 1;
   }
   const rounded = Math.round(value) / roundTo;
-  return { unit: units[unit], value: rounded };
+  return { unit: units[unit]!, value: rounded };
 };
 
 /**
@@ -104,7 +104,7 @@ export class ThroughputStatistics<Metrics extends { [type: string]: number }> {
     metrics: Metrics;
   }) {
     if (durationMs < 1) {
-      logger.warn(
+      instances.logger!.warn(
         { durationMs, metrics, startTime },
         'Statistic duration bug: attempted to add a statistic with a duration less than 1.'
       );
@@ -187,7 +187,7 @@ export class ThroughputStatistics<Metrics extends { [type: string]: number }> {
     const increaseMetrics = (before: Composite, increaseBy: Composite) => {
       const out: Composite = createEmptyComposite();
       Object.keys(out).forEach((key) => {
-        const value = before[key] + increaseBy[key];
+        const value = before[key]! + increaseBy[key]!;
         out[key as keyof Composite] = value as Composite[keyof Composite];
       });
       return out;
@@ -199,7 +199,7 @@ export class ThroughputStatistics<Metrics extends { [type: string]: number }> {
     const decreaseMetrics = (before: Composite, reduceBy: Composite) => {
       const out: Composite = createEmptyComposite();
       Object.keys(out).forEach((key) => {
-        const value = before[key] - reduceBy[key];
+        const value = before[key]! - reduceBy[key]!;
         out[key as keyof Composite] = value as Composite[keyof Composite];
       });
       return out;
@@ -221,7 +221,7 @@ export class ThroughputStatistics<Metrics extends { [type: string]: number }> {
           ] as Composite[keyof Composite];
           return;
         }
-        const value = before[key] * multiplyBy;
+        const value = before[key]! * multiplyBy;
         out[key as keyof Composite] = value as Composite[keyof Composite];
       });
       return out;
@@ -234,9 +234,7 @@ export class ThroughputStatistics<Metrics extends { [type: string]: number }> {
     const attemptToRemovePendingDrops = (cutoffTime: number | false) => {
       const ascendingDrops = pendingDrops.sort((a, b) => a.time - b.time);
       // eslint-disable-next-line functional/no-let
-      let nextDrop = ascendingDrops[0] as
-        | typeof ascendingDrops[number]
-        | undefined;
+      let [nextDrop] = ascendingDrops;
       // eslint-disable-next-line functional/no-loop-statement
       while (
         nextDrop !== undefined &&
@@ -246,17 +244,15 @@ export class ThroughputStatistics<Metrics extends { [type: string]: number }> {
         ascendingDrops.shift();
         const lastPoint = timelinePerSecond[timelinePerSecond.length - 1];
         const newPoint = {
-          metrics: decreaseMetrics(lastPoint.metrics, nextDrop.metrics),
+          metrics: decreaseMetrics(lastPoint!.metrics, nextDrop.metrics),
           time: nextDrop.time,
         };
-        if (newPoint.time === lastPoint.time) {
+        if (newPoint.time === lastPoint!.time) {
           timelinePerSecond[timelinePerSecond.length - 1] = newPoint;
         } else {
           timelinePerSecond.push(newPoint);
         }
-        nextDrop = ascendingDrops[0] as
-          | typeof ascendingDrops[number]
-          | undefined;
+        [nextDrop] = ascendingDrops;
       }
     };
 
@@ -305,7 +301,7 @@ export class ThroughputStatistics<Metrics extends { [type: string]: number }> {
     // eslint-disable-next-line functional/no-let
     let activeDuration = 0;
     // eslint-disable-next-line @typescript-eslint/init-declarations, functional/no-let
-    let lastPoint: typeof timelinePerSecond[number] | undefined;
+    let lastPoint: (typeof timelinePerSecond)[number] | undefined;
     timelinePerSecond.forEach((point) => {
       if (lastPoint !== undefined && lastPoint.metrics.concurrency > 0) {
         const duration = point.time - lastPoint.time;

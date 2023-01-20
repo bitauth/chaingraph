@@ -4,10 +4,15 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "Debug chaingraph",
-      "program": "${workspaceFolder}/bin/chaingraph",
+      "name": "Debug Chaingraph",
+      "program": "${workspaceFolder}/bin/chaingraph.js",
+      "outputCapture": "std",
       "cwd": "${workspaceFolder}",
-      "env": { "CHAINGRAPH_USER_AGENT": "/chaingraph:vscode-debug/" },
+      "env": {
+        "CHAINGRAPH_USER_AGENT": "/chaingraph:vscode-debug/",
+        "CHAINGRAPH_LOG_LEVEL_STDOUT": "trace"
+      },
+      "console": "integratedTerminal",
       "skipFiles": ["<node_internals>/**/*.js"]
     },
     // To debug, make sure a *.spec.ts file is active in the editor, then run a configuration
@@ -15,14 +20,11 @@
       "type": "node",
       "request": "launch",
       "name": "Debug Active Spec",
-      "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/ava",
-      "runtimeArgs": ["debug", "--break", "--serial", "${file}"],
-      "port": 9229,
+      "program": "${workspaceFolder}/node_modules/ava/entrypoints/cli.mjs",
+      "args": ["${file}"],
       "outputCapture": "std",
-      "skipFiles": [
-        "<node_internals>/**/*.js",
-        "${workspaceFolder}/node_modules/ava/**/*.js"
-      ],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**/*.js"],
       "preLaunchTask": "npm: build"
     },
     {
@@ -30,51 +32,34 @@
       "type": "node",
       "request": "launch",
       "name": "Debug Active Spec (no build)",
-      "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/ava",
-      "runtimeArgs": ["debug", "--break", "--serial", "${file}"],
-      "port": 9229,
+      "program": "${workspaceFolder}/node_modules/ava/entrypoints/cli.mjs",
+      "args": ["${file}"],
       "outputCapture": "std",
-      "skipFiles": [
-        "<node_internals>/**/*.js",
-        "${workspaceFolder}/node_modules/ava/**/*.js"
-      ]
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**/*.js"]
     },
     {
       "type": "node",
       "request": "launch",
       "name": "Debug E2E tests (no build)",
-      "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/ava",
-      "runtimeArgs": [
-        "debug",
-        "--break",
-        "--serial",
-        "${workspaceFolder}/src/e2e/e2e.spec.ts"
-      ],
-      "port": 9229,
+      "program": "${workspaceFolder}/node_modules/ava/entrypoints/cli.mjs",
+      "args": ["${workspaceFolder}/src/e2e/e2e.spec.ts"],
       "outputCapture": "std",
-      "skipFiles": [
-        "<node_internals>/**/*.js",
-        "${workspaceFolder}/node_modules/ava/**/*.js"
-      ]
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**/*.js"]
     },
     {
       "type": "node",
       "request": "launch",
       "name": "Debug E2E Postgres tests (no build)",
-      "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/ava",
-      "runtimeArgs": [
-        "debug",
-        "--break",
-        "--serial",
+      "program": "${workspaceFolder}/node_modules/ava/entrypoints/cli.mjs",
+      "args": [
         "${workspaceFolder}/src/e2e/e2e.spec.ts",
         "--match='*[e2e]*[postgres]*'"
       ],
-      "port": 9229,
       "outputCapture": "std",
-      "skipFiles": [
-        "<node_internals>/**/*.js",
-        "${workspaceFolder}/node_modules/ava/**/*.js"
-      ]
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**/*.js"]
     }
   ]
 }

@@ -2,37 +2,37 @@ table:
   name: node
   schema: public
 array_relationships:
-- name: accepted_blocks
-  using:
-    foreign_key_constraint_on:
-      column: node_internal_id
-      table:
-        name: node_block
-        schema: public
-- name: unconfirmed_transactions
-  using:
-    foreign_key_constraint_on:
-      column: node_internal_id
-      table:
-        name: node_transaction
-        schema: public
+  - name: accepted_blocks
+    using:
+      foreign_key_constraint_on:
+        column: node_internal_id
+        table:
+          name: node_block
+          schema: public
+  - name: unconfirmed_transactions
+    using:
+      foreign_key_constraint_on:
+        column: node_internal_id
+        table:
+          name: node_transaction
+          schema: public
 computed_fields:
-- definition:
-    function:
-      name: node_unconfirmed_transaction_count
-      schema: public
-  name: unconfirmed_transaction_count
+  - name: unconfirmed_transaction_count
+    definition:
+      function:
+        name: node_unconfirmed_transaction_count
+        schema: public
 select_permissions:
-- permission:
-    columns:
-    - name
-    - internal_id
-    - protocol_version
-    - user_agent
-    - first_connected_at
-    - latest_connection_began_at
-    computed_fields:
-    - unconfirmed_transaction_count
-    filter: {}
-    limit: 1000
-  role: public
+  - role: public
+    permission:
+      columns:
+        - name
+        - internal_id
+        - protocol_version
+        - user_agent
+        - first_connected_at
+        - latest_connection_began_at
+      computed_fields:
+        - unconfirmed_transaction_count
+      filter: {}
+      limit: 1000

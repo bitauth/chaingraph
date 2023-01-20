@@ -2,18 +2,18 @@ table:
   name: block_transaction
   schema: public
 object_relationships:
-- name: block
-  using:
-    foreign_key_constraint_on: block_internal_id
-- name: transaction
-  using:
-    foreign_key_constraint_on: transaction_internal_id
+  - name: block
+    using:
+      foreign_key_constraint_on: block_internal_id
+  - name: transaction
+    using:
+      foreign_key_constraint_on: transaction_internal_id
 select_permissions:
-- permission:
-    columns:
-    - block_internal_id
-    - transaction_internal_id
-    - transaction_index
-    filter: {}
-    limit: 5000
-  role: public
+  - role: public
+    permission:
+      columns:
+        - block_internal_id
+        - transaction_internal_id
+        - transaction_index
+      filter: {}
+      limit: 5000

@@ -59,10 +59,14 @@ spec:
           value: {{ .Values.hasura.enableConsole | quote }}
         - name: HASURA_GRAPHQL_ADMIN_INTERNAL_ERRORS
           value: 'true'
+        - name: HASURA_GRAPHQL_STRINGIFY_NUMERIC_TYPES
+          value: 'true'
         - name: HASURA_GRAPHQL_UNAUTHORIZED_ROLE
           value: 'public'
         - name: HASURA_GRAPHQL_ENABLE_ALLOWLIST
           value: {{ .Values.hasura.enableAllowList | quote }}
+        - name: WEBHOOK_HANDLER_BASE_URL
+          value: {{ .Values.hasura.webhookHandlerBaseUrl | default (print "http://agent-service." .Release.Namespace ".svc.cluster.local:" .Values.agent.port ) | quote }}
         ports:
         - containerPort: 8080
           protocol: TCP

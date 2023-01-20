@@ -1,9 +1,9 @@
 # Before use, Postgres version must be updated to match version specified in values.yaml.
 
-FROM postgres:13.2
+FROM postgres:14.6
 
-ENV PG_MAJOR 13
-ENV PG_FULL 13.2
+ENV PG_MAJOR 14
+ENV PG_FULL 14.6
 
 RUN apt-get update \
   && apt-cache showpkg postgresql-$PG_MAJOR-pldebugger \

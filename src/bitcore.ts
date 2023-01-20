@@ -1,13 +1,13 @@
-import { Messages, Peer } from '@chaingraph/bitcore-p2p-cash';
 import type {
   BitcoreBlock,
   BitcoreTransaction,
 } from '@chaingraph/bitcore-p2p-cash';
+import bitcoreP2pCash from '@chaingraph/bitcore-p2p-cash';
 
 import type {
   ChaingraphBlock,
   ChaingraphTransaction,
-} from './types/chaingraph';
+} from './types/chaingraph.js';
 
 export const bitcoreTransactionToChaingraphTransaction = (
   bitcoreTransaction: BitcoreTransaction
@@ -25,8 +25,15 @@ export const bitcoreTransactionToChaingraphTransaction = (
     isCoinbase,
     locktime: txObject.nLockTime,
     outputs: txObject.outputs.map((output) => ({
+      fungibleTokenAmount:
+        output.tokenData === undefined
+          ? undefined
+          : BigInt(output.tokenData.amount),
       lockingBytecode: output.script,
-      satoshis: output.satoshis,
+      nonfungibleTokenCapability: output.tokenData?.nft?.capability,
+      nonfungibleTokenCommitment: output.tokenData?.nft?.commitment,
+      tokenCategory: output.tokenData?.category,
+      valueSatoshis: BigInt(output.satoshis),
     })),
     sizeBytes: bitcoreTransaction.toBuffer().length,
     version: txObject.version,
@@ -54,6 +61,4 @@ export const bitcoreBlockToChaingraphBlock = (
   };
 };
 
-export const messages = new Messages();
-
-export { Peer };
+export const messages = new bitcoreP2pCash.Messages();

@@ -2,7 +2,7 @@
 import { range } from '@bitauth/libauth';
 import test from 'ava';
 
-import { selectHeaderLocatorHashes } from './block-tree';
+import { selectHeaderLocatorHashes } from './block-tree.js';
 
 test('selectHeaderLocatorHashes', async (t) => {
   const testLength = 654247;

@@ -36,6 +36,25 @@ spec:
   hostPath:
     path: "/data/bitcoin-cash-node-testnet"
 {{- end }}
+{{- if .Values.bitcoinCashNodeChipnet.enable }}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: bitcoin-cash-node-chipnet-volume
+  labels:
+    type: local
+    developmentVolume: bitcoin-cash-node-chipnet
+spec:
+  storageClassName: local-path
+  persistentVolumeReclaimPolicy: Retain
+  capacity:
+    storage: {{ .Values.bitcoinCashNodeChipnet.volumeSize }}
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/data/bitcoin-cash-node-chipnet"
+{{- end }}
 {{- if .Values.agent.enable }}
 ---
 apiVersion: v1

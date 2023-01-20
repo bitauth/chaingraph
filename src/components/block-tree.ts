@@ -2,7 +2,7 @@ import { binToHex } from '@bitauth/libauth';
 import type { BitcoreBlockHeader } from '@chaingraph/bitcore-p2p-cash';
 import type pino from 'pino';
 
-import type { InitialSyncState } from './sync-state';
+import type { InitialSyncState } from './sync-state.js';
 
 /**
  * Get the current height of a chain (length - 1).
@@ -38,13 +38,13 @@ export const selectHeaderLocatorHashes = <T = string>(hashes: T[]) => {
   const backoffFactor = 2;
   // eslint-disable-next-line functional/no-loop-statement
   while (nextIndex > 0) {
-    locator.push(hashes[nextIndex]);
+    locator.push(hashes[nextIndex]!);
     nextIndex -= step;
     step *= backoffFactor;
   }
   const genesisHeight = 0;
   const genesisHash = hashes[genesisHeight];
-  locator.push(genesisHash);
+  locator.push(genesisHash!);
   /* eslint-enable functional/no-let */
   return locator;
 };
@@ -92,11 +92,11 @@ export class BlockTree {
 
   private readonly onStaleBlocks: OnStaleBlocksCallback;
 
-  private readonly logger: pino.Logger;
+  private readonly logger: pino.BaseLogger;
 
   constructor(config: {
     genesisBlockByNode: { [nodeName: string]: [string] };
-    logger: pino.Logger;
+    logger: pino.BaseLogger;
 
     /**
      * A callback to run on chains of stale blocks which a header update
@@ -147,13 +147,13 @@ export class BlockTree {
     this.blockHeaderHashChain[nodeName] = contiguousChain;
     this.blockHeaderHashChainSparseTip[nodeName] = remainingSparseTip;
     const fullySyncedUpToHeight = currentHeight(
-      this.blockHeaderHashChain[nodeName]
+      this.blockHeaderHashChain[nodeName]!
     );
-    const additionalSyncedHeights = this.blockHeaderHashChainSparseTip[nodeName]
-      .map((hash, additionalHeight) =>
-        hash === null ? undefined : fullySyncedUpToHeight + 1 + additionalHeight
-      )
-      .filter((value): value is number => value !== undefined);
+    const additionalSyncedHeights = this.blockHeaderHashChainSparseTip[
+      nodeName
+    ]!.map((hash, additionalHeight) =>
+      hash === null ? undefined : fullySyncedUpToHeight + 1 + additionalHeight
+    ).filter((value): value is number => value !== undefined);
     const additionalHeightsList =
       additionalSyncedHeights.length === 0
         ? '(none)'
@@ -185,7 +185,7 @@ export class BlockTree {
       );
       return false;
     }
-    const [firstHeader] = headers;
+    const firstHeader = headers[0]!;
     const previousHeaderHash = binToHex(
       Uint8Array.from(firstHeader.prevHash).reverse()
     );
@@ -198,7 +198,7 @@ export class BlockTree {
       return this.getLocatorForNode(nodeName);
     }
     const firstHeight = previousHeight + 1;
-    const lastHeader = headers[headers.length - 1];
+    const lastHeader = headers[headers.length - 1]!;
     if (chain.lastIndexOf(lastHeader.hash) !== -1) {
       this.logger.warn(
         `BlockTree: ${nodeName} unexpectedly sent a set of already-known headers from ${firstHeader.hash} (height: ${firstHeight}) to ${lastHeader.hash} (headers sent: ${headers.length}). Requesting headers using a fresh locator...`
@@ -220,9 +220,9 @@ export class BlockTree {
     this.logger.debug(
       `${nodeName}: added ${
         newHashes.length
-      } headers to block tree. Latest height: ${currentHeight(chain)} – hash: ${
-        chain[currentHeight(chain)]
-      }`
+      } headers to block tree. Latest height: ${currentHeight(
+        chain
+      )} – hash: ${chain[currentHeight(chain)]!}`
     );
 
     const maximumHeaderCount = 2000;
@@ -271,18 +271,18 @@ export class BlockTree {
    */
   getNodesWithBlock(hash: string, height: number) {
     return Object.keys(this.blockHeaderHashChain).filter(
-      (nodeName) => this.blockHeaderHashChain[nodeName][height] === hash
+      (nodeName) => this.blockHeaderHashChain[nodeName]![height] === hash
     );
   }
 
   getBlockHeaderHash(nodeName: string, height: number) {
-    return this.getHashChain(nodeName)[height] as string | undefined;
+    return this.getHashChain(nodeName)[height];
   }
 
   getSourceNodesForBlockHeader(hash: string, height: number) {
     return Object.keys(this.blockHeaderHashChain).reduce<string[]>(
       (all, nodeName) => {
-        const hasHeader = this.blockHeaderHashChain[nodeName][height] === hash;
+        const hasHeader = this.blockHeaderHashChain[nodeName]![height] === hash;
         return hasHeader ? [...all, nodeName] : all;
       },
       []
@@ -294,6 +294,6 @@ export class BlockTree {
       // eslint-disable-next-line functional/no-throw-statement
       throw new Error(`The node '${nodeName}' is not in this BlockTree.`);
     }
-    return this.blockHeaderHashChain[nodeName];
+    return this.blockHeaderHashChain[nodeName]!;
   }
 }

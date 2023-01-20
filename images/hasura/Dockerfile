@@ -1,5 +1,5 @@
 
-FROM hasura/graphql-engine:v2.1.0.cli-migrations-v3
+FROM hasura/graphql-engine:v2.16.1.cli-migrations-v3
 
 COPY hasura-data /hasura-data
 

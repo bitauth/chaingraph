@@ -23,6 +23,14 @@ declare module 'bitcore-lib-cash' {
     outputs: {
       satoshis: number;
       script: string;
+      tokenData?: {
+        amount: string;
+        category: string;
+        nft?: {
+          capability: 'minting' | 'mutable' | 'none';
+          commitment: string;
+        };
+      };
     }[];
     version: number;
   }
@@ -73,6 +81,14 @@ declare module 'bitcore-lib-cash' {
     outputs: {
       satoshis: number;
       script: BitcoreScript;
+      tokenData?: {
+        amount: string;
+        category: string;
+        nft?: {
+          capability: 'minting' | 'mutable' | 'none';
+          commitment: string;
+        };
+      };
     }[];
 
     version: number;

@@ -5,7 +5,7 @@ import {
   formatBytes,
   formatByteThroughput,
   ThroughputStatistics,
-} from './throughput-statistics';
+} from './throughput-statistics.js';
 
 const now = 1;
 const fiveMinutesInMs = 5 * 60 * 1000;

@@ -7,26 +7,25 @@ import type {
   BitcoreBlockHeader,
   BitcoreTransaction,
 } from '@chaingraph/bitcore-p2p-cash';
-import {
+import bitcoreP2pCash, {
   BitcoreInventoryType,
-  internalBitcore,
 } from '@chaingraph/bitcore-p2p-cash';
 import LRU from 'lru-cache';
+import type pino from 'pino';
 
 import {
   bitcoreBlockToChaingraphBlock,
   bitcoreTransactionToChaingraphTransaction,
-  Peer,
-} from './bitcore';
-import { BlockBuffer } from './components/block-buffer';
-import { BlockTree } from './components/block-tree';
-import type { indexDefinitions } from './components/db-utils';
-import { SyncState } from './components/sync-state';
+} from './bitcore.js';
+import { BlockBuffer } from './components/block-buffer.js';
+import { BlockTree } from './components/block-tree.js';
+import type { indexDefinitions } from './components/db-utils.js';
+import { SyncState } from './components/sync-state.js';
 import {
   formatBytes,
   formatByteThroughput,
   ThroughputStatistics,
-} from './components/throughput-statistics';
+} from './components/throughput-statistics.js';
 import {
   blockBufferTargetSizeMb,
   chaingraphLogFirehose,
@@ -34,7 +33,7 @@ import {
   genesisBlocks,
   postgresMaxConnections,
   trustedNodes,
-} from './config';
+} from './config.js';
 import {
   acceptBlocksViaHeaders,
   createIndexes,
@@ -50,9 +49,11 @@ import {
   removeStaleBlocksForNode,
   saveBlock,
   saveTransactionForNodes,
-} from './db';
-import { logger } from './logging';
-import type { ChaingraphBlock } from './types/chaingraph';
+} from './db.js';
+import type { ChaingraphBlock } from './types/chaingraph.js';
+
+// eslint-disable-next-line @typescript-eslint/naming-convention
+const { internalBitcore, Peer } = bitcoreP2pCash;
 
 /**
  * The fixed protocol version currently used by Chaingraph.
@@ -163,6 +164,51 @@ interface TransactionCacheItem {
   nodes: Agent['nodes'][string][];
 }
 
+interface Node {
+  disconnect: () => void;
+  /**
+   * Initially `false`, set to true when the headers sync has been completed
+   * for this node.
+   */
+  headersSynced: boolean;
+  /**
+   * Initially `undefined`, is set after the node connection is ready and
+   * the node has been inserted or updated in the database.
+   */
+  internalId: number | undefined;
+  /**
+   * Resolves once the node is has been inserted or updated in the database.
+   * This is also when `internalId` and `syncState` are guaranteed to be
+   * available.
+   */
+  nodeRegistered: Promise<void>;
+  /**
+   * The `@chaingraph/bitcore-p2p-cash` `Peer` object that maintains the
+   * connection with this node.
+   */
+  peer: bitcoreP2pCash.Peer;
+  /**
+   * The `@chaingraph/bitcore-p2p-cash` `Peer` object that maintains an
+   * independent connection with this node for use in transaction broadcasting.
+   * If transactions were sent over the `peer` connection, the node may assume
+   * Chaingraph has already heard about the transaction and will exclude the
+   * transaction from broadcasts to Chaingraph. By broadcasting transactions
+   * over this connection, the agent will receive the transaction over the
+   * `peer` connection like any other transaction, allowing the agent to know
+   * whether or not the transaction was accepted by that node.
+   */
+  peerTxBroadcastConnection: bitcoreP2pCash.Peer;
+  /**
+   * Initially `undefined`, is set after the node connection is ready and
+   * the sync state has been restored from the database.
+   */
+  syncState: SyncState | undefined;
+  /**
+   * Measures the download performance from this node in bytes/millisecond.
+   */
+  downloadThroughput: ThroughputStatistics<{ bytes: number }>;
+}
+
 /**
  * The Chaingraph Agent is the long-running process which connects to all
  * trusted nodes, downloads chain data, and saves everything to the database.
@@ -171,6 +217,8 @@ interface TransactionCacheItem {
  * the database to keep it synchronized with each node.
  */
 export class Agent {
+  logger: pino.BaseLogger;
+
   startTime = new Date();
 
   blockBuffer: BlockBuffer;
@@ -231,36 +279,10 @@ export class Agent {
   }));
 
   nodes: {
-    [nodeName: string]: {
-      disconnect: () => void;
-      /**
-       * Initially `false`, set to true when the headers sync has been completed
-       * for this node.
-       */
-      headersSynced: boolean;
-      /**
-       * Initially `undefined`, is set after the node connection is ready and
-       * the node has been inserted or updated in the database.
-       */
-      internalId: number | undefined;
-      /**
-       * Resolves once the node is has been inserted or updated in the database.
-       * This is also when `internalId` and `syncState` are guaranteed to be
-       * available.
-       */
-      nodeRegistered: Promise<void>;
-      peer: Peer;
-      /**
-       * Initially `undefined`, is set after the node connection is ready and
-       * the sync state has been restored from the database.
-       */
-      syncState: SyncState | undefined;
-      /**
-       * Measures the download performance from this node in bytes/millisecond.
-       */
-      downloadThroughput: ThroughputStatistics<{ bytes: number }>;
-    };
+    [nodeName: string]: Node;
   };
+
+  nodesByInternalId = [] as [nodeName: string, node: Node][];
 
   heartbeatInterval: NodeJS.Timeout;
 
@@ -308,7 +330,8 @@ export class Agent {
 
   onShutdown: () => void;
 
-  constructor(config: { onShutdown: () => void }) {
+  constructor(config: { logger: pino.BaseLogger; onShutdown: () => void }) {
+    this.logger = config.logger;
     this.onShutdown = config.onShutdown;
     this.heartbeatInterval = setInterval(() => {
       this.agentHeartbeat();
@@ -318,11 +341,11 @@ export class Agent {
       genesisBlockByNode: trustedNodes.reduce(
         (all, node) => ({
           ...all,
-          [node.name]: [genesisBlocks[node.networkMagicHex].hash],
+          [node.name]: [genesisBlocks[node.networkMagicHex]!.hash],
         }),
         {}
       ),
-      logger,
+      logger: this.logger,
       onStaleBlocks: (
         staleChain: string[],
         firstHeight: number,
@@ -346,7 +369,7 @@ export class Agent {
       this.blockDbRestored = true;
     });
 
-    logger.info(
+    this.logger.info(
       trustedNodes,
       `Connecting to ${trustedNodes.length} trusted node(s)`
     );
@@ -394,17 +417,22 @@ export class Agent {
         name: node.networkMagicHex,
         networkMagic: parseInt(node.networkMagicHex, 16),
       });
-      const peer = new Peer({
+      const peerConfig = {
         host: node.host,
         network: node.networkMagicHex,
         port: node.port,
         subversion: chaingraphUserAgent,
         version: chaingraphProtocolVersion,
+      };
+      const peer = new Peer(peerConfig);
+      const peerTxBroadcastConnection = new Peer({
+        ...peerConfig,
+        subversion: `${chaingraphUserAgent}tx-broadcast/`,
       });
 
       if (chaingraphLogFirehose) {
         peer.on('*', (message, eventName) => {
-          logger.trace(
+          this.logger.trace(
             `${eventName} received from peer - ${node.name}: ${inspect(
               message,
               {
@@ -423,9 +451,8 @@ export class Agent {
       const nodeRegistered = new Promise<void>((resolve) => {
         nodeRegisteredResolver = resolve;
       });
-
       peer.on('ready', () => {
-        logger.info(
+        this.logger.info(
           {
             bestHeight: peer.bestHeight,
             protocolVersion: peer.version,
@@ -454,9 +481,13 @@ export class Agent {
           protocolVersion: peer.version,
           userAgent: peer.subversion,
         }).then(({ internalId, syncedHeaderHashChain }) => {
-          logger.trace(`Trusted node registered: ${node.name}`);
-          const expectedGenesisBlock = genesisBlocks[node.networkMagicHex];
-          this.nodes[node.name].internalId = internalId;
+          this.logger.trace(`Trusted node registered: ${node.name}`);
+          const expectedGenesisBlock = genesisBlocks[node.networkMagicHex]!;
+          this.nodes[node.name]!.internalId = internalId;
+          this.nodesByInternalId[internalId] = [
+            node.name,
+            this.nodes[node.name]!,
+          ];
           const needsGenesisBlock = syncedHeaderHashChain.length === 0;
           const initialSyncState = this.blockTree.restoreChainForNode(
             node.name,
@@ -464,13 +495,13 @@ export class Agent {
               ? [expectedGenesisBlock.hash]
               : syncedHeaderHashChain
           );
-          this.nodes[node.name].syncState = new SyncState(initialSyncState);
+          this.nodes[node.name]!.syncState = new SyncState(initialSyncState);
           const genesisBlockHeaderFromDb = this.blockTree.getBlockHeaderHash(
             node.name,
             0
           )!;
           if (needsGenesisBlock) {
-            logger.trace(
+            this.logger.trace(
               `Genesis block unsaved for: ${node.name}, saving block with hash: ${expectedGenesisBlock.hash}`
             );
             /**
@@ -481,11 +512,11 @@ export class Agent {
               node.name,
             ]);
           } else if (genesisBlockHeaderFromDb !== expectedGenesisBlock.hash) {
-            logger.fatal(
+            this.logger.fatal(
               `Fatal error: attempted to restore chain for node ${node.name}, but the genesis block hash in the database differs from the one provided by the agent. This is likely a configuration error – shutting down to avoid corrupting the database. Block 0 hash expected: ${expectedGenesisBlock.hash} – from database: ${genesisBlockHeaderFromDb}`
             );
             this.shutdown().catch((err) => {
-              logger.error(err);
+              this.logger.error(err);
             });
             return;
           }
@@ -495,10 +526,10 @@ export class Agent {
       });
 
       peer.on('disconnect', () => {
-        logger.info(`${node.name}: disconnected`);
+        this.logger.info(`${node.name}: disconnected`);
         if (connectionStatus.shouldRetryConnection) {
           this.rescheduleDownloadsForNode(node.name);
-          logger.debug(
+          this.logger.debug(
             `${node.name}: unexpected disconnection – attempting to reconnect...`
           );
           if (connectionStatus.connectionStabilityTimer !== undefined) {
@@ -515,7 +546,7 @@ export class Agent {
           );
           connectionStatus.retryTimer = setTimeout(() => {
             const seconds = 1_000;
-            logger.debug(
+            this.logger.debug(
               `${node.name}: attempting to reconnect... (retry ${
                 connectionStatus.retriesSinceStableConnection
               } – waited ${nextDelay / seconds} seconds)`
@@ -526,6 +557,8 @@ export class Agent {
               connectionStatus.connectionStabilityTimer = undefined;
             }, connectionStabilityDelay);
             peer.connect();
+            if (peerTxBroadcastConnection.status === 'disconnected')
+              peerTxBroadcastConnection.connect();
           }, nextDelay);
         } else {
           /**
@@ -550,7 +583,7 @@ export class Agent {
           return;
         }
         message.inventory.forEach((inventoryItem) => {
-          logger.trace(
+          this.logger.trace(
             `${node.name}: inv message item - type: ${
               inventoryItem.type
             } hash: ${inventoryItem.hash.toString('hex')}`
@@ -558,7 +591,7 @@ export class Agent {
           // TODO: clean up handling of endianness (bitcore tries to be clever here)
           if (inventoryItem.type !== BitcoreInventoryType.MSG_TX) {
             if (inventoryItem.type === BitcoreInventoryType.MSG_BLOCK) {
-              logger.warn(
+              this.logger.warn(
                 `${
                   node.name
                 }: received unexpected block inventory item with hash: ${inventoryItem.hash.toString(
@@ -568,7 +601,7 @@ export class Agent {
               this.requestHeaders(node.name);
               return;
             }
-            logger.warn(
+            this.logger.warn(
               `${node.name}: received unexpected inventory item of type ${
                 inventoryItem.type
               } with hash: ${inventoryItem.hash.toString('hex')}`
@@ -583,7 +616,7 @@ export class Agent {
           const isSavedTransaction =
             this.transactionCache.get(transactionHash)?.db;
           if (isSavedTransaction !== true) {
-            logger.trace(
+            this.logger.trace(
               `Requesting transaction from ${
                 node.name
               } - hash: ${inventoryItem.hash.toString('hex')}`
@@ -607,16 +640,34 @@ export class Agent {
       peer.on('tx', (message) => {
         this.handleTransactionFromNode(node.name, message.transaction).catch(
           (err) => {
-            logger.error(err);
+            this.logger.error(err);
           }
         );
       });
 
       peer.on('error', (err) => {
-        logger.error(err as Error, `Error from peer: ${node.name}`);
+        this.logger.error(err as Error, `Error from peer: ${node.name}`);
+      });
+
+      peerTxBroadcastConnection.on('ready', () => {
+        this.logger.info(
+          `${node.name}: ready to accept broadcasted transactions`
+        );
+      });
+
+      peerTxBroadcastConnection.on('disconnect', () => {
+        this.logger.info(`${node.name}: broadcast connection disconnected`);
+      });
+
+      peerTxBroadcastConnection.on('error', (err) => {
+        this.logger.error(
+          err as Error,
+          `Error from peer broadcast connection: ${node.name}`
+        );
       });
 
       peer.connect();
+      peerTxBroadcastConnection.connect();
       const nodes: Agent['nodes'] = {
         ...all,
         [node.name]: {
@@ -625,13 +676,16 @@ export class Agent {
             if (connectionStatus.retryTimer !== undefined) {
               clearTimeout(connectionStatus.retryTimer);
             }
-            peer.disconnect();
+            if (peer.status !== 'disconnected') peer.disconnect();
+            if (peerTxBroadcastConnection.status !== 'disconnected')
+              peerTxBroadcastConnection.disconnect();
           },
           downloadThroughput: new ThroughputStatistics(() => ({ bytes: 0 })),
           headersSynced: false,
           internalId: undefined,
           nodeRegistered,
           peer,
+          peerTxBroadcastConnection,
           syncState: undefined,
         },
       };
@@ -660,7 +714,7 @@ export class Agent {
       const currentDelay = Date.now() - this.startTime.getTime();
       if (currentDelay > warnAfterDelayMs) {
         if (this.blockDbRestored) {
-          logger.warn(
+          this.logger.warn(
             `The following nodes are taking longer than ${Math.round(
               currentDelay / second
             )} seconds to initialize and may be misconfigured: ${uninitializedNodes.join(
@@ -668,7 +722,7 @@ export class Agent {
             )}`
           );
         } else {
-          logger.warn(
+          this.logger.warn(
             `Could not restore block hashes from the database within 5 seconds. There may be a database configuration or connectivity problem.`
           );
         }
@@ -680,11 +734,11 @@ export class Agent {
       optionallyDisableSynchronousCommit()
         .then((disabled) => {
           if (disabled) {
-            logger.debug('Disabled synchronous_commit for initial sync.');
+            this.logger.debug('Disabled synchronous_commit for initial sync.');
           }
         })
         .catch((err) => {
-          logger.error(err);
+          this.logger.error(err);
         })
         .finally(() => {
           this.successfullyInitialized = true;
@@ -722,7 +776,7 @@ export class Agent {
     if (this.willShutdown) {
       return;
     }
-    logger.trace(
+    this.logger.trace(
       `Attempting to fill block buffer. (size: ${formatBytes(
         this.blockBuffer.currentlyAllocatedSize()
       )} | count: ${this.blockBuffer.count()} | reserved: ${
@@ -732,9 +786,9 @@ export class Agent {
     if (!this.blockBuffer.isFull()) {
       const nextBlock = this.selectNextBlockToDownload();
       if (nextBlock === false) {
-        logger.trace('fillBlockBuffer: no next block.');
+        this.logger.trace('fillBlockBuffer: no next block.');
         if (this.syncedAtLastFillAttempt) {
-          logger.trace(
+          this.logger.trace(
             'fillBlockBuffer: synced at last attempt, testing for completion.'
           );
           if (
@@ -749,29 +803,29 @@ export class Agent {
             )
           ) {
             this.completedInitialSync = true;
-            logger.info(`Agent: initial sync is complete.`);
+            this.logger.info(`Agent: initial sync is complete.`);
             optionallyEnableSynchronousCommit()
               .then((disabled) => {
                 if (disabled) {
-                  logger.debug('Re-enabled synchronous_commit.');
+                  this.logger.debug('Re-enabled synchronous_commit.');
                 }
               })
               .catch((err) => {
-                logger.error(err);
+                this.logger.error(err);
               })
               .finally(() => {
                 this.buildIndexes()
                   .then(async () => {
-                    logger.info(
+                    this.logger.info(
                       `Agent: all managed indexes have been created.`
                     );
                     return reenableMempoolCleaning().then(() => {
-                      logger.info('Agent: enabled mempool tracking.');
+                      this.logger.info('Agent: enabled mempool tracking.');
                       this.saveInboundTransactions = true;
                     });
                   })
                   .catch((err) => {
-                    logger.fatal(err);
+                    this.logger.fatal(err);
                     // eslint-disable-next-line @typescript-eslint/no-floating-promises
                     this.shutdown();
                   });
@@ -779,7 +833,7 @@ export class Agent {
           }
         } else {
           this.syncedAtLastFillAttempt = true;
-          logger.trace(
+          this.logger.trace(
             `Agent: no next block yet – all blocks are pending or synced.`
           );
         }
@@ -790,7 +844,7 @@ export class Agent {
       const { hash, height, sourceNodes } = nextBlock;
       this.requestBlock(hash, height);
       sourceNodes.forEach((nodeName) => {
-        this.nodes[nodeName].syncState!.markHeightAsPendingSync(height);
+        this.nodes[nodeName]!.syncState!.markHeightAsPendingSync(height);
       });
       this.scheduleBlockBufferFill();
     }
@@ -818,7 +872,7 @@ export class Agent {
       getIndexCreationProgress()
         .then((progress) => {
           if (progress.length > 0) {
-            logger.info(
+            this.logger.info(
               `Building indexes: ${progress
                 .map(
                   ([name, percentage]) =>
@@ -832,7 +886,7 @@ export class Agent {
           }
         })
         .catch((err) => {
-          logger.error(err);
+          this.logger.error(err);
         });
     };
     logIndexCreationProgress();
@@ -855,8 +909,8 @@ export class Agent {
     const bestHeights = this.blockTree.getBestHeights();
     const syncPercentages = Object.keys(this.nodes)
       .map((nodeName) => {
-        const bestHeight = bestHeights[nodeName];
-        const { syncState } = this.nodes[nodeName];
+        const bestHeight = bestHeights[nodeName]!;
+        const { syncState } = this.nodes[nodeName]!;
         if (syncState === undefined) return undefined;
         const pendingHeight = syncState.getPendingSyncHeight();
         return {
@@ -881,9 +935,9 @@ export class Agent {
 
   selectNextBlockToDownload() {
     const percentages = this.getChainSyncPercentages();
-    const [leastSyncedChain] = percentages;
+    const leastSyncedChain = percentages[0]!;
     if (leastSyncedChain.pendingHeight >= leastSyncedChain.bestHeight) {
-      logger.trace(
+      this.logger.trace(
         `All remaining blocks from least-synced chain are pending – ${
           leastSyncedChain.nodeName
         }: ${leastSyncedChain.pendingHeight}/${
@@ -894,7 +948,7 @@ export class Agent {
     }
     const { nodeName, pendingHeight } = leastSyncedChain;
     const height = pendingHeight + 1;
-    logger.trace(
+    this.logger.trace(
       `Selecting next block from least-synced chain – node: ${
         leastSyncedChain.nodeName
       } | selected: ${height} | best: ${
@@ -914,13 +968,13 @@ export class Agent {
    * database. If so, we can quickly mark these blocks as accepted by the node.
    */
   catchUpViaHeaders() {
-    logger.trace('Attempting to catch up via headers.');
+    this.logger.trace('Attempting to catch up via headers.');
     const bestHeights = this.blockTree.getBestHeights();
     // eslint-disable-next-line complexity
     Object.keys(this.nodes).forEach((nodeName) => {
-      const { syncState } = this.nodes[nodeName];
+      const { syncState } = this.nodes[nodeName]!;
       if (this.blockDb === undefined || syncState === undefined) {
-        logger.trace(
+        this.logger.trace(
           `${nodeName}: catchUpViaHeaders - DB not yet connected, or syncState unknown.`
         );
         return;
@@ -933,7 +987,7 @@ export class Agent {
       for (
         // eslint-disable-next-line functional/no-let
         let nextHeight = syncState.getPendingSyncHeight() + 1;
-        nextHeight <= bestHeights[nodeName];
+        nextHeight <= bestHeights[nodeName]!;
         nextHeight = syncState.getPendingSyncHeight() + 1
       ) {
         const nextHash = this.blockTree.getBlockHeaderHash(
@@ -952,14 +1006,20 @@ export class Agent {
       }
       const acceptedAt = new Date();
       acceptBlocksViaHeaders(
-        this.nodes[nodeName].internalId!,
+        this.nodes[nodeName]!.internalId!,
         acceptedBlocks,
         acceptedAt
       )
         .then(() => {
-          const lastAcceptedBlock = acceptedBlocks[acceptedBlocks.length - 1];
-          logger.debug(
-            `${nodeName}: accepted ${acceptedBlocks.length} existing blocks from height ${acceptedBlocks[0].height} to height ${lastAcceptedBlock.height} (hash: ${lastAcceptedBlock.hash})`
+          const lastAcceptedBlock = acceptedBlocks[acceptedBlocks.length - 1]!;
+          this.logger.debug(
+            `${nodeName}: accepted ${
+              acceptedBlocks.length
+            } existing blocks from height ${
+              acceptedBlocks[0]!.height
+            } to height ${lastAcceptedBlock.height} (hash: ${
+              lastAcceptedBlock.hash
+            })`
           );
           acceptedBlocks.forEach((block) => {
             syncState.markHeightAsSynced(block.height, 'caught-up');
@@ -967,7 +1027,7 @@ export class Agent {
           this.scheduleBlockBufferFill();
         })
         .catch((err) => {
-          logger.error(err);
+          this.logger.error(err);
         });
     });
   }
@@ -991,7 +1051,7 @@ export class Agent {
      */
     const rawSpeeds = nodeNames.map(() => 1);
     const expectedSpeeds = rawSpeeds.map((rawSpeed, i) => {
-      const nodeName = nodeNames[i];
+      const nodeName = nodeNames[i]!;
       const speed = rawSpeed;
       const activeDownloads = downloadCountByNode[nodeName] ?? 0;
       return {
@@ -1001,12 +1061,11 @@ export class Agent {
     });
     return expectedSpeeds
       .sort((a, b) => b.expectedSpeed - a.expectedSpeed)
-      .filter(({ nodeName }) => {
-        return (
+      .filter(
+        ({ nodeName }) =>
           (downloadCountByNode[nodeName] ?? 0) < maxPendingDownloads &&
-          this.nodes[nodeName].peer.status === 'ready'
-        );
-      })
+          this.nodes[nodeName]!.peer.status === 'ready'
+      )
       .map((s) => s.nodeName);
   }
 
@@ -1029,22 +1088,22 @@ export class Agent {
       this.blockDownloads.filter((download) => download.hash === hash)
         .length !== 0
     ) {
-      logger.error(
+      this.logger.error(
         `Agent: called requestBlock for a block which is already being downloaded.`
       );
       return;
     }
-    const node = this.orderNodesByExpectedDownloadSpeed(nodeNames)[0] as
-      | string
-      | undefined;
+    const [node] = this.orderNodesByExpectedDownloadSpeed(nodeNames);
     if (node === undefined) {
-      logger.debug(
+      this.logger.debug(
         `All nodes with block ${height} (${hash}) are either responding slowly and have reached the maximum number of pending downloads (${maxPendingDownloads}) or are disconnected. Will retry download in ${
           downloadTimeout / msPerSecond
         } seconds.`
       );
     } else {
-      logger.trace(`Requesting block ${height} (${hash}) from node: ${node}`);
+      this.logger.trace(
+        `Requesting block ${height} (${hash}) from node: ${node}`
+      );
     }
     const download = {
       hash,
@@ -1053,7 +1112,7 @@ export class Agent {
       requestedFromNode: node,
       timeout: setTimeout(() => {
         if (node !== undefined) {
-          logger.warn(
+          this.logger.warn(
             `Agent: download from ${node} of block ${download.height} (${
               download.hash
             }) timed out after ${
@@ -1067,7 +1126,7 @@ export class Agent {
     };
     this.blockDownloads.push(download);
     if (node !== undefined) {
-      const { peer } = this.nodes[node];
+      const { peer } = this.nodes[node]!;
       peer.sendMessage(peer.messages.GetData.forBlock(hash));
     }
   }
@@ -1105,28 +1164,26 @@ export class Agent {
     nodeName: string,
     locator = this.blockTree.getLocatorForNode(nodeName)
   ) {
-    if (this.nodes[nodeName].internalId === undefined) {
-      logger.trace(
+    if (this.nodes[nodeName]!.internalId === undefined) {
+      this.logger.trace(
         'Attempted to requestHeaders before node registered, will retry after registration.'
       );
       /**
        * To simplify logic (and debugging), we wait to request headers
        * until after we've confirmed the node exists in the database.
        */
-      this.nodes[nodeName].nodeRegistered
-        .then(() => {
-          logger.trace('Node registered, reattempting requestHeaders.');
-          this.requestHeaders(nodeName, locator);
-        })
-        .catch((err) => {
-          logger.error(err);
-        });
+      this.nodes[nodeName]!.nodeRegistered.then(() => {
+        this.logger.trace('Node registered, reattempting requestHeaders.');
+        this.requestHeaders(nodeName, locator);
+      }).catch((err) => {
+        this.logger.error(err);
+      });
       return;
     }
-    logger.trace(
-      `Requesting headers from node: ${nodeName}, first locator hash: ${locator[0]}`
+    this.logger.trace(
+      `Requesting headers from node: ${nodeName}, first locator hash: ${locator[0]!}`
     );
-    const { peer } = this.nodes[nodeName];
+    const { peer } = this.nodes[nodeName]!;
     const noStopHash =
       '0000000000000000000000000000000000000000000000000000000000000000';
     peer.sendMessage(
@@ -1138,11 +1195,13 @@ export class Agent {
   }
 
   handleHeadersFromNode(nodeName: string, headers: BitcoreBlockHeader[]) {
-    logger.trace(`Handling ${headers.length} headers from node: ${nodeName}`);
+    this.logger.trace(
+      `Handling ${headers.length} headers from node: ${nodeName}`
+    );
     const nextLocator = this.blockTree.updateHeaders(nodeName, headers);
     if (nextLocator === false) {
-      this.nodes[nodeName].headersSynced = true;
-      logger.trace(`Headers marked as synced for node: ${nodeName}`);
+      this.nodes[nodeName]!.headersSynced = true;
+      this.logger.trace(`Headers marked as synced for node: ${nodeName}`);
     } else {
       this.requestHeaders(nodeName, nextLocator);
     }
@@ -1155,7 +1214,7 @@ export class Agent {
     const finishedDownloadAt = Date.now();
     const download = this.blockDownloads.find((d) => d.hash === hash);
     if (download === undefined) {
-      logger.info(
+      this.logger.info(
         `${nodeName}: received an un-requested block – hash: ${hash} – this likely means the block was mined by this node.`
       );
       this.blockTree.updateHeaders(nodeName, [bitcoreBlock.header]);
@@ -1165,7 +1224,7 @@ export class Agent {
       );
 
       if (height === undefined) {
-        logger.warn(
+        this.logger.warn(
           `${nodeName}: the parent of the un-requested block could not be found in the block tree. Discarding block and beginning headers sync...`
         );
         this.requestHeaders(nodeName);
@@ -1174,14 +1233,14 @@ export class Agent {
       this.scheduleBlockParse(bitcoreBlock, height);
       return;
     }
-    logger.trace(
+    this.logger.trace(
       `Downloaded block ${download.height} from ${nodeName}: ${hash}`
     );
     this.clearDownload(download);
     this.blockBuffer.releaseReservedBlock();
     const durationMs = finishedDownloadAt - download.requestStartTime;
     this.scheduleBlockParse(bitcoreBlock, download.height, (block) => {
-      this.nodes[nodeName].downloadThroughput.addStatistic({
+      this.nodes[nodeName]!.downloadThroughput.addStatistic({
         durationMs: durationMs === 0 ? 1 : durationMs,
         metrics: { bytes: block.sizeBytes },
         startTime: download.requestStartTime,
@@ -1226,14 +1285,14 @@ export class Agent {
     receivedTime: Date,
     acceptedBy?: string[]
   ) {
-    logger.trace(`bufferParsedBlock: ${block.hash}`);
+    this.logger.trace(`bufferParsedBlock: ${block.hash}`);
     this.blockBuffer.addBlock(block);
     this.saveBlock(block, receivedTime, acceptedBy)
       .then(() => {
         this.scheduleBlockBufferFill();
       })
       .catch((err) => {
-        logger.fatal(err);
+        this.logger.fatal(err);
         // eslint-disable-next-line @typescript-eslint/no-floating-promises
         this.shutdown();
       });
@@ -1259,7 +1318,7 @@ export class Agent {
     firstAcceptedAt: Date,
     acceptedBy = this.blockTree.getNodesWithBlock(block.hash, block.height)
   ) {
-    logger.trace(`saveBlock: ${block.hash}`);
+    this.logger.trace(`saveBlock: ${block.hash}`);
 
     const blockTime = blockTimestampToDate(block.timestamp);
     /**
@@ -1281,7 +1340,7 @@ export class Agent {
       (nodeName) =>
         ({
           acceptedAt,
-          nodeInternalId: this.nodes[nodeName].internalId,
+          nodeInternalId: this.nodes[nodeName]!.internalId,
           nodeName,
         } as {
           acceptedAt: Date | null;
@@ -1340,13 +1399,13 @@ export class Agent {
       .map((acceptance) => acceptance.nodeName)
       .join(', ')}`;
     if (isHistoricalSync) {
-      logger.debug(blockSyncLog);
+      this.logger.debug(blockSyncLog);
     } else {
-      logger.info(blockSyncLog);
+      this.logger.info(blockSyncLog);
     }
 
     nodeAcceptances.forEach((acceptance) => {
-      const { syncState } = this.nodes[acceptance.nodeName];
+      const { syncState } = this.nodes[acceptance.nodeName]!;
       syncState!.markHeightAsSynced(
         block.height,
         blockTimestampToDate(block.timestamp)
@@ -1365,15 +1424,15 @@ export class Agent {
     firstHeight: number,
     nodeName: string
   ) {
-    removeStaleBlocksForNode(this.nodes[nodeName].internalId!, staleChain)
+    removeStaleBlocksForNode(this.nodes[nodeName]!.internalId!, staleChain)
       .then(() => {
-        logger.info(
+        this.logger.info(
           staleChain,
           `${nodeName}: re-organization detected beginning at height: ${firstHeight}. The following stale blocks were removed:`
         );
       })
       .catch((err) => {
-        logger.error(err);
+        this.logger.error(err);
       });
   }
 
@@ -1390,7 +1449,7 @@ export class Agent {
     nodeName: string,
     transactionHash: string
   ) {
-    const node = this.nodes[nodeName];
+    const node = this.nodes[nodeName]!;
     const txCacheItem = this.getCachedTransactionOrDefault(transactionHash);
     if (!txCacheItem.nodes.includes(node)) {
       txCacheItem.nodes.push(node);
@@ -1401,14 +1460,14 @@ export class Agent {
          * transaction, and the transaction is already in the database.
          * Immediately mark the acceptance.
          */
-        logger.trace(
+        this.logger.trace(
           `${nodeName}: validated known tx – hash: ${transactionHash}`
         );
         recordNodeValidation(transactionHash, {
           nodeInternalId: node.internalId!,
           validatedAt: new Date(),
         }).catch((err) => {
-          logger.error(err);
+          this.logger.error(err);
         });
         this.markTransactionSavedToDb(transactionHash);
       }
@@ -1434,7 +1493,9 @@ export class Agent {
     const txCacheItem = this.getCachedTransactionOrDefault(transactionHash);
     txCacheItem.db = true;
     this.transactionCache.set(transactionHash, txCacheItem);
-    logger.trace(`Marked transaction saved to DB - hash: ${transactionHash}`);
+    this.logger.trace(
+      `Marked transaction saved to DB - hash: ${transactionHash}`
+    );
   }
 
   /**
@@ -1452,7 +1513,7 @@ export class Agent {
     }
     const validatedAt = new Date();
     const tx = bitcoreTransactionToChaingraphTransaction(transaction);
-    logger.trace(`${nodeName}: announced transaction hash: ${tx.hash}`);
+    this.logger.trace(`${nodeName}: announced transaction hash: ${tx.hash}`);
     this.recordTransactionAnnouncementFromNode(nodeName, tx.hash);
     const txCacheItem = this.getCachedTransactionOrDefault(tx.hash);
     if (!txCacheItem.db) {
@@ -1469,7 +1530,7 @@ export class Agent {
         nodeInternalId: node.internalId!,
         validatedAt,
       }));
-      logger.trace(
+      this.logger.trace(
         `Transaction not cached as saved to DB, saving validations for node internal_id: ${validations
           .map((v) => v.nodeInternalId)
           .join(', ')} - hash: ${tx.hash}`
@@ -1510,7 +1571,7 @@ export class Agent {
       const decimalPlaces = 2;
       // eslint-disable-next-line complexity
       const nodes = Object.keys(this.nodes).map((nodeName) => {
-        const node = this.nodes[nodeName];
+        const node = this.nodes[nodeName]!;
         const { syncState } = node;
         if (syncState === undefined) {
           return { nodeName, status: 'uninitialized' };
@@ -1518,7 +1579,7 @@ export class Agent {
 
         const completedHeight = syncState.fullySyncedUpToHeight;
         const pendingHeight = syncState.getPendingSyncHeight();
-        const bestHeight = bestHeights[nodeName];
+        const bestHeight = bestHeights[nodeName]!;
 
         if (syncState.fullySyncedUpToHeight === bestHeight) {
           this.requestHeaders(nodeName);
@@ -1661,7 +1722,7 @@ export class Agent {
       };
 
       const blockDbHashes = this.blockDb?.size ?? 0;
-      const transactionDbHashes = this.transactionCache.length;
+      const transactionDbHashes = this.transactionCache.size;
 
       const stats = {
         blockBuffer,
@@ -1674,14 +1735,14 @@ export class Agent {
         transactionDbHashes,
       };
 
-      logger.info(stats, 'Syncing...');
+      this.logger.info(stats, 'Syncing...');
     }
   }
 
   async shutdown() {
-    logger.trace('Attempting shutdown...');
+    this.logger.trace('Attempting shutdown...');
     if (this.shutdownPromise !== undefined) {
-      logger.error(`Already shutting down.`);
+      this.logger.fatal(`Already shutting down.`);
       return this.shutdownPromise;
     }
     this.willShutdown = true;
@@ -1693,12 +1754,12 @@ export class Agent {
     this.shutdownPromise = this.blockBuffer
       .drain()
       .then(async () => {
-        logger.debug('Block buffer drained, stopping PG pool...');
+        this.logger.debug('Block buffer drained, stopping PG pool...');
         return pool.end();
       })
       .then(() => {
-        logger.debug('PG pool cleared.');
-        logger.info('Exiting...');
+        this.logger.debug('PG pool cleared.');
+        this.logger.info('Exiting...');
       });
     this.onShutdown();
     return this.shutdownPromise;

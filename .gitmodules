@@ -1,0 +1,4 @@
+[submodule ".yarn"]
+	path = .yarn
+	url = https://github.com/bitauth/chaingraph-dependencies.git
+	shallow = true

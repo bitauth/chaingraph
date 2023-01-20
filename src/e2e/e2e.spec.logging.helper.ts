@@ -1,9 +1,15 @@
 import { mkdirSync } from 'fs';
 import { dirname } from 'path';
 
-import pino from 'pino';
+import { pino } from 'pino';
 
-export const chaingraphE2eLogPath = 'data/chaingraph/log-e2e.ndjson';
+const uniqueFiles = false as boolean;
+
+export const chaingraphE2eLogPath = uniqueFiles
+  ? `data/chaingraph/e2e/log_e2e_${new Date()
+      .toISOString()
+      .replace(/[-:.]/gu, '_')}.ndjson`
+  : `data/chaingraph/log-e2e.ndjson`;
 
 const directory = dirname(chaingraphE2eLogPath);
 mkdirSync(directory, { recursive: true });

@@ -30,7 +30,15 @@ Note, it's usually a good idea to initially sync mainnet on a new Chaingraph dep
 
 Of course, this advice does not apply when adding additional mainnet nodes to an existing mainnet-supporting deployment (as the database already contains all mainnet blocks and transactions). The additional node can also operate in pruned mode, as Chaingraph will catch up exclusively via headers.
 
-#### BCHN (Testnet)
+#### BCHN (Chipnet)
+
+A [BCHN](https://bitcoincashnode.org/) node configured to connect to `chipnet` is enabled by default. It can be disabled with the following option:
+
+```sh
+--set bitcoinCashNodeChipnet.enable=false
+```
+
+#### BCHN (Testnet4)
 
 A [BCHN](https://bitcoincashnode.org/) node configured to connect to `testnet4` is enabled by default. It can be disabled with the following option:
 

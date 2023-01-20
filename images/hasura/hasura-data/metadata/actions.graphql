@@ -1,0 +1,19 @@
+type Mutation {
+  send_transaction(
+    request: SendTransactionRequest!
+  ): SendTransactionResult!
+}
+
+input SendTransactionRequest {
+  node_internal_id: bigint!
+  encoded_hex: String!
+}
+
+type SendTransactionResult {
+  transaction_hash: String!
+  validation_error_message: String
+  validation_success: Boolean!
+  transmission_error_message: String
+  transmission_success: Boolean!
+}
+

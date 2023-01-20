@@ -4,21 +4,28 @@ Thanks for your interest in contributing to Chaingraph! This guide should help y
 
 Please also join us on the [`Chaingraph Dev` Telegram chat group](https://t.me/chaingraph_dev).
 
-## Install Node.js dependencies
+## Requirements & dependencies
 
-In addition to [Node.js](https://nodejs.org/), you'll need [Yarn](https://yarnpkg.com/getting-started/install) for Node.js dependency management.
+Chaingraph uses the [Yarn package manager's zero-installs](https://yarnpkg.com/features/zero-installs) philosophy. First, ensure you have [Node.js](https://nodejs.org/en/) and [Yarn](https://yarnpkg.com/) installed, then recursively clone the repo:
 
-```sh
-npm install -g yarn
+```
+git clone --recursive https://github.com/bitauth/chaingraph.git
+cd chaingraph
 ```
 
-Then install Chaingraph's dependencies:
+Note that it is not necessary to run `yarn install` – all of [Chaingraph's dependencies are tracked in an independent git repository](https://github.com/bitauth/chaingraph-dependencies), and the dependency repo is automatically shallow-cloned into the `.yarn` directory.
+
+Finally, [install Hasura CLI](https://hasura.io/docs/latest/hasura-cli/install-hasura-cli/). On Linux and macOS:
 
 ```sh
-yarn
+curl -L https://github.com/hasura/graphql-engine/raw/stable/cli/get.sh | bash
+# get completion installation instructions:
+hasura completion --help
 ```
 
-In the rest of this document, you'll see a variety of package scripts used via yarn, e.g.:
+## Package scripts
+
+In the rest of this document, you'll see a variety of package scripts used via `yarn`, e.g.:
 
 ```sh
 yarn build # (builds Chaingraph from source files)
@@ -87,13 +94,18 @@ When the development cluster is running, the built-in Bitcoin Cash node will aut
 
 By default, all cluster "development volumes" are placed in the `data` directory for easy access.
 
-> Note: destroying and recreating the cluster should always leave the `data` directory in tact so the recreated cluster will continue where it left off. To also reset a volume, delete or rename the chosen directory within the `data` directory when re-creating the cluster.
-
 If you've configured the cluster to use local resources (a locally-running node or Postgres instance), **continue with the setup instructions in the next sections**. If you're using all built-in resources, you're ready to start Chaingraph:
 
 ```sh
 # Expose Hasura to local processes (in a separate shell)
 yarn dev-cluster:port-forward:hasura
+
+# If using internal Postgres, expose to local processes (in a separate shell)
+yarn dev-cluster:port-forward:postgres
+
+# If using internal node(s), expose to local processes (in a separate shells)
+yarn dev-cluster:port-forward:bchn:chipnet # and/or
+yarn dev-cluster:port-forward:bchn:testnet
 
 # Build Chaingraph
 yarn build
@@ -103,9 +115,19 @@ yarn start
 
 # Optional: open Hasura console (in a separate shell)
 yarn dev-cluster:hasura:console
+
+# Output all chaingraph-secrets
+# (Postgres password, Hasura admin secret key)
+yarn dev-cluster:secrets
 ```
 
-Note, Hasura CLI is installed and managed by Yarn using the [`hasura-cli`](https://www.npmjs.com/package/hasura-cli/) package. Package scripts will use the installed `hasura` binary automatically; to use the Hasura CLI manually outside of a package script, use `npx`, e.g. `npx hasura help`. (Most manual commands will also require the admin secret, i.e. `--admin-secret=very_insecure_hasura_admin_secret_key`.)
+When making changes to the Chaingraph helm chart, it's often useful to test the changes by destroying and recreate the dev-cluster. Review the `dev-cluster:reset` package scripts for helpful commands:
+
+```
+grep "dev-cluster:reset" package.json
+```
+
+Destroying and recreating the cluster should always leave the `data` directory in tact, so the recreated cluster will continue where it left off. To also reset a volume, delete or rename the chosen directory within the `data` directory when re-creating the cluster.
 
 ## Syncing from a local node (outside the cluster)
 
@@ -137,9 +159,9 @@ ln -s /path/to/bitcoin-cash-node/build/src/bitcoind /usr/local/bin/bitcoin-bchn
 If you already have a data directory on the local machine, you can skip syncing by linking it directly into `data/bchn-local`. If you don't have a synced data directory locally (or want to sync from scratch), simply create the `data/bchn-local` directory.
 
 ```sh
-# link an existing data directory
+# either link an existing data directory:
 ln -s /path/to/existing/data/dir data/bchn-local
-# sync from scratch
+# or create the folder to sync from scratch:
 mkdir -p data/bchn-local
 ```
 
@@ -165,7 +187,7 @@ port=8333
 > bitcoin-cli -datadir=$PWD/data/bchn-local
 > ```
 
-Now you can run `yarn local:bchn` to start the local node.
+Now you can run `yarn local:bchn:mainnet` to start the local node.
 
 Once you have a local node running, you can conserve local resources by spinning down the node running inside the `dev-cluster`:
 
@@ -315,10 +337,14 @@ To enable pgAdmin, use `--set pgAdmin.enable=true` while installing the Chaingra
 yarn dev-cluster:port-forward:pgadmin
 ```
 
-To enable debugging, you'll need to enable the `pldbgapi` extension. If you're using the `local-node` configuration, this can be done in one command:
+To enable debugging, you'll need to enable the `pldbgapi` extension. If you're using the built-in Postgres instance, package scripts make this simple:
 
 ```sh
+# For clusters created with `yarn dev-cluster:init`
+yarn dev-cluster:upgrade:enable-pldbgapi
+# For clusters created with `yarn dev-cluster:init:local-node`
 yarn dev-cluster:upgrade:local-node-enable-pldbgapi
+
 # Once the cluster has restarted:
 yarn local:postgres:enable-pldbgapi
 ```

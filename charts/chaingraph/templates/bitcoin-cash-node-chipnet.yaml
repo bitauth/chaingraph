@@ -1,48 +1,48 @@
-{{- if .Values.bitcoinCashNodeTestnet.enable }}
+{{- if .Values.bitcoinCashNodeChipnet.enable }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: bitcoin-cash-node-testnet
+  name: bitcoin-cash-node-chipnet
   labels:
-    app: bitcoin-cash-node-testnet
+    app: bitcoin-cash-node-chipnet
     {{- include "chaingraph.labels" . | nindent 4 }}
 spec:
-  serviceName: bitcoin-cash-node-testnet-service
+  serviceName: bitcoin-cash-node-chipnet-service
   replicas: 1
   selector:
     matchLabels:
-      app: bitcoin-cash-node-testnet
+      app: bitcoin-cash-node-chipnet
       {{- include "chaingraph.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        app: bitcoin-cash-node-testnet
+        app: bitcoin-cash-node-chipnet
         {{- include "chaingraph.selectorLabels" . | nindent 8 }}
     spec:
       containers:
-      - name: bitcoin-cash-node-testnet
-        image: {{ .Values.bitcoinCashNodeTestnet.image | default .Values.bitcoinCashNode.image }}
+      - name: bitcoin-cash-node-chipnet
+        image: {{ .Values.bitcoinCashNodeChipnet.image | default .Values.bitcoinCashNode.image }}
         env:
         - name: APPEND_TO_BITCOIN_CONF
-          value: "disablewallet=1\nwhitelist=0.0.0.0/0\ntestnet4=1"
+          value: "disablewallet=1\nwhitelist=0.0.0.0/0\nchipnet=1"
         ports:
-          - containerPort: 28333
-            name: testnet-p2p
+          - containerPort: 48333
+            name: chipnet-p2p
         volumeMounts:
-          - name: bitcoin-cash-node-testnet-volume
+          - name: bitcoin-cash-node-chipnet-volume
             mountPath: /data
             {{- if not .Values.useDevelopmentVolumes }} # https://github.com/rancher/k3d/issues/765
-            subPath: bitcoin-cash-node-testnet
+            subPath: bitcoin-cash-node-chipnet
             {{ end }}
   volumeClaimTemplates:
   - metadata:
-      name: bitcoin-cash-node-testnet-volume
+      name: bitcoin-cash-node-chipnet-volume
     spec:
       accessModes: [ "ReadWriteOnce" ]
       resources:
         requests:
-          storage: {{ .Values.bitcoinCashNodeTestnet.volumeSize }}
+          storage: {{ .Values.bitcoinCashNodeChipnet.volumeSize }}
       {{- if .Values.useDevelopmentVolumes }}
-      volumeName: bitcoin-cash-node-testnet-volume
+      volumeName: bitcoin-cash-node-chipnet-volume
       {{- end }}
 {{- end }}

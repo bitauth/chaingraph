@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-magic-numbers */
 import test from 'ava';
 
-import type { ChaingraphBlock } from '../types/chaingraph';
+import type { ChaingraphBlock } from '../types/chaingraph.js';
 
-import { BlockBuffer } from './block-buffer';
+import { BlockBuffer } from './block-buffer.js';
 
 const oneMB = 1_000_000;
 const maxExpectedBlockMB = oneMB;

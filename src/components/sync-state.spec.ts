@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-magic-numbers */
 import test from 'ava';
 
-import { SyncState } from './sync-state';
+import { SyncState } from './sync-state.js';
 
 test('SyncState', (t) => {
   const state = new SyncState({

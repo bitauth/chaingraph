@@ -2,32 +2,32 @@ table:
   name: authchain_view
   schema: public
 object_relationships:
-- name: authhead
-  using:
-    manual_configuration:
-      column_mapping:
-        authhead_transaction_hash: hash
-      insertion_order: null
-      remote_table:
-        name: transaction
-        schema: public
+  - name: authhead
+    using:
+      manual_configuration:
+        column_mapping:
+          authhead_transaction_hash: hash
+        insertion_order: null
+        remote_table:
+          name: transaction
+          schema: public
 array_relationships:
-- name: migrations
-  using:
-    manual_configuration:
-      column_mapping:
-        transaction_internal_id: authbase_internal_id
-      insertion_order: null
-      remote_table:
-        name: authchain_migrations_view
-        schema: public
+  - name: migrations
+    using:
+      manual_configuration:
+        column_mapping:
+          transaction_internal_id: authbase_internal_id
+        insertion_order: null
+        remote_table:
+          name: authchain_migrations_view
+          schema: public
 select_permissions:
-- permission:
-    columns:
-    - transaction_internal_id
-    - authhead_transaction_hash
-    - authchain_length
-    - unspent_authhead
-    filter: {}
-    limit: 100
-  role: public
+  - role: public
+    permission:
+      columns:
+        - transaction_internal_id
+        - authhead_transaction_hash
+        - authchain_length
+        - unspent_authhead
+      filter: {}
+      limit: 100

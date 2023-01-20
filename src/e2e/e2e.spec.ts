@@ -1,6 +1,7 @@
 /* eslint-disable max-lines */
 import { readFileSync } from 'fs';
-import path from 'path';
+import { dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
 import { inspect } from 'util';
 
 import {
@@ -17,19 +18,19 @@ import type {
   GetHeadersMessage,
   Peer,
 } from '@chaingraph/bitcore-p2p-cash';
-import {
+import bitcoreP2pCash, {
   BitcoreInventoryType,
-  internalBitcore,
-  Pool,
 } from '@chaingraph/bitcore-p2p-cash';
-import type { Macro } from 'ava';
 import test from 'ava';
-import execa from 'execa';
+import type { ExecaChildProcess } from 'execa';
+import { execa } from 'execa';
 import got from 'got';
-import { Client } from 'pg';
+import pg from 'pg';
 
-import { chaingraphE2eLogPath, logger } from './e2e.spec.logging.helper';
+import { chaingraphE2eLogPath, logger } from './e2e.spec.logging.helper.js';
 import {
+  chipnetCashTokensTx,
+  chipnetCashTokensTxHash,
   generateMockchain,
   generateMockDoubleSpend,
   genesisBlock,
@@ -41,7 +42,10 @@ import {
   selectHeaders,
   testnetGenesisBlockRaw,
   Transaction,
-} from './e2e.spec.mockchain.helper';
+} from './e2e.spec.mockchain.helper.js';
+
+// eslint-disable-next-line @typescript-eslint/naming-convention
+const { Pool, internalBitcore } = bitcoreP2pCash;
 
 /**
  * Set to `true` to log all P2P messages.
@@ -52,12 +56,15 @@ logger.info('\n\n---- Beginning new E2E test run. ----\n');
 
 const e2eTestDbName = 'chaingraph_e2e_test';
 const recreateDbOnStartup = true as boolean;
-const dbUpMigrationPath = path.resolve(
-  __dirname,
-  '../../images/hasura/hasura-data/migrations/default/1616195337538_init/up.sql'
-);
+const dir = dirname(fileURLToPath(import.meta.url));
+const migration = (path: string) =>
+  resolve(dir, '../../images/hasura/hasura-data/migrations/', path);
+const dbUpMigrationPaths = [
+  migration('default/1616195337538_init/up.sql'),
+  migration('default/1673124945608_tokens/up.sql'),
+];
 
-const chaingraphHealthCheckPort = '3200';
+const chaingraphInternalApiPort = '3201';
 
 /**
  * TODO: test multiple network magic values
@@ -130,7 +137,7 @@ const postgresE2eConnectionStringTestDb = `${postgresE2eConnectionStringBase}/${
 const e2eEnvVariables = {
   /* eslint-disable @typescript-eslint/naming-convention */
   CHAINGRAPH_GENESIS_BLOCKS: `${e2eTestNetworkMagicHex}:${genesisBlockRaw},e3e1f3e8:${genesisBlockRaw},dab5bffa:${testnetGenesisBlockRaw}`,
-  CHAINGRAPH_HEALTH_CHECK_PORT: chaingraphHealthCheckPort,
+  CHAINGRAPH_INTERNAL_API_PORT: chaingraphInternalApiPort,
   CHAINGRAPH_LOG_FIREHOSE: logP2pMessage.toString(),
   CHAINGRAPH_LOG_PATH: chaingraphE2eLogPath,
   CHAINGRAPH_POSTGRES_CONNECTION_STRING: postgresE2eConnectionStringTestDb,
@@ -148,7 +155,6 @@ const e2eEnvVariables2 = {
 
 const placeholder = undefined as unknown as Peer;
 /**
- * x
  * Object which holds a reference to each node's `peer`. Set to `undefined`
  * before Chaingraph connects to each node.
  */
@@ -167,43 +173,58 @@ test.afterEach((t) => {
 });
 
 // eslint-disable-next-line functional/no-let, @typescript-eslint/init-declarations
-let client: Client;
+let client: pg.Client;
 /**
  * Before connecting to the e2e test database, drop and recreate it:
  */
 test.before(async () => {
   if (recreateDbOnStartup) {
-    const defaultClient = new Client({
+    const defaultClient = new pg.Client({
       connectionString: postgresE2eConnectionStringDefaultDb,
     });
     await defaultClient.connect();
     await defaultClient.query(
       `DROP DATABASE IF EXISTS ${e2eTestDbName} WITH (FORCE);`
     );
+    logger.info(`Dropped database: ${e2eTestDbName}`);
     await defaultClient.query(`CREATE DATABASE ${e2eTestDbName};`);
+    logger.info(`Created database: ${e2eTestDbName}`);
     await defaultClient.end();
   }
-  client = new Client({
+  client = new pg.Client({
     connectionString: postgresE2eConnectionStringTestDb,
   });
   await client.connect();
   if (recreateDbOnStartup) {
-    const dbUpMigration = readFileSync(dbUpMigrationPath, 'utf8');
-    await client.query(dbUpMigration);
+    await dbUpMigrationPaths.reduce<Promise<pg.QueryResult | undefined>>(
+      async (chain, path) => {
+        const dbUpMigration = readFileSync(path, 'utf8');
+        return chain.then(async () => client.query(dbUpMigration));
+      },
+      Promise.resolve(undefined)
+    );
   }
 
   node1.listen();
   node2.listen();
   node3.listen();
 
+  const logPeerConnection = (nodeName: string, peer: Peer) => {
+    logger.info(
+      `${nodeName} inbound connection from host ${peer.host} at port ${peer.port}; user-agent: ${peer.subversion}`
+    );
+  };
   node1.on('peerready', (peer) => {
-    peers.node1 = peer;
+    logPeerConnection(`node1`, peer);
+    if (!peer.subversion.includes('tx-broadcast')) peers.node1 = peer;
   });
   node2.on('peerready', (peer) => {
-    peers.node2 = peer;
+    logPeerConnection(`node2`, peer);
+    if (!peer.subversion.includes('tx-broadcast')) peers.node2 = peer;
   });
   node3.on('peerready', (peer) => {
-    peers.node3 = peer;
+    logPeerConnection(`node3`, peer);
+    if (!peer.subversion.includes('tx-broadcast')) peers.node3 = peer;
   });
 
   if (logP2pMessage) {
@@ -249,7 +270,7 @@ const mockchainBeforeFork = [
   }),
 ];
 const preSplitLastBlockHash =
-  mockchainBeforeFork[mockchainBeforeFork.length - 1].header.hash;
+  mockchainBeforeFork[mockchainBeforeFork.length - 1]!.header.hash;
 /**
  * At `splitHeight`, the mockchain splits into two tips (A) and (B):
  *  - Node1 follows (A).
@@ -276,7 +297,7 @@ const tipB = generateMockchain({
 
 const tipAStale150 = generateMockchain({
   length: 3,
-  previousBlockHash: tipA[149].header.hash,
+  previousBlockHash: tipA[149]!.header.hash,
 });
 
 /**
@@ -396,11 +417,11 @@ logger.info(
 );
 
 // eslint-disable-next-line functional/no-let, @typescript-eslint/init-declarations
-let chaingraphProcess: execa.ExecaChildProcess;
+let chaingraphProcess: ExecaChildProcess | undefined;
 // eslint-disable-next-line functional/no-let, @typescript-eslint/init-declarations
-let chaingraphProcess2: execa.ExecaChildProcess;
+let chaingraphProcess2: ExecaChildProcess | undefined;
 // eslint-disable-next-line functional/no-let, @typescript-eslint/init-declarations
-let chaingraphProcess3: execa.ExecaChildProcess;
+let chaingraphProcess3: ExecaChildProcess | undefined;
 // eslint-disable-next-line functional/no-let
 let stdoutBuffer = '';
 // eslint-disable-next-line functional/no-let
@@ -420,18 +441,31 @@ const handleStdout = () => {
   });
 };
 
+const seconds = 1000;
+const tenSeconds = 10_000;
 /**
  * Returns a promise that resolves when the `search` string is found in stdout.
  * @param search - the string to search for in stdout
+ *
+ * TODO: if AVA is running in debug mode, disable timeout (https://github.com/avajs/ava/issues/3152)
  */
-const waitForStdout = async (search: RegExp | string) => {
+const waitForStdout = async (search: RegExp | string, timeout = tenSeconds) => {
   logger.debug(`Waiting for stdout: ${search.toString()}`);
-  const promise = new Promise<void>((resolve) => {
+  const timeoutId = setTimeout(() => {
+    // eslint-disable-next-line functional/no-throw-statement
+    throw new Error(
+      `Test failed after waiting ${
+        timeout / seconds
+      }s for the stdout search: ${search.toString()}`
+    );
+  }, timeout);
+  const promise = new Promise<void>((res) => {
     waitingForStdout.push({
       pattern: search,
       resolver: () => {
         logger.debug(`Heard stdout: ${search.toString()}`);
-        resolve();
+        clearTimeout(timeoutId);
+        res();
       },
     });
   });
@@ -460,13 +494,18 @@ test.serial('[e2e] spawn chaingraph', async (t) => {
   t.pass();
 });
 
-test.serial('[e2e] health check responds 200 OK', async (t) => {
+const enum StatusCode {
+  success = 200,
+  badRequest = 400,
+  notFound = 404,
+}
+
+test.serial('[e2e] api /health-check is alive', async (t) => {
   const healthCheckResponse = await got(
-    `http://localhost:${chaingraphHealthCheckPort}`
+    `http://localhost:${chaingraphInternalApiPort}/health-check`
   );
-  // eslint-disable-next-line @typescript-eslint/no-magic-numbers
-  t.deepEqual(healthCheckResponse.statusCode, 200);
-  t.deepEqual(healthCheckResponse.body, 'OK');
+  t.deepEqual(healthCheckResponse.statusCode, StatusCode.success);
+  t.deepEqual(healthCheckResponse.body, '{"status":"alive"}');
 });
 
 test.serial('[e2e] connects to trusted nodes', async (t) => {
@@ -490,7 +529,8 @@ test.serial(
       /Saved new block – height:\s+10[^\n]+nodes: node1, node2, node3/u
     );
     logger.info('e2e: testing sync restoration on restart. Sending SIGTERM...');
-    chaingraphProcess.kill('SIGTERM');
+    chaingraphProcess!.kill('SIGINT');
+    // chaingraphProcess!.kill('SIGTERM');
     await waitForStdout('Shutting down...');
     await waitForStdout('Exiting...');
     chaingraphProcess2 = execa('node', ['./bin/chaingraph'], {
@@ -513,8 +553,8 @@ test.serial(
   }
 );
 const sleep = async (ms: number) =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms);
+  new Promise((res) => {
+    setTimeout(res, ms);
   });
 
 test.serial(
@@ -534,9 +574,12 @@ test.serial(
   }
 );
 
+const oneMinute = 60_000;
 test.serial('[e2e] completes initial sync', async (t) => {
+  t.timeout(oneMinute);
   await waitForStdout(
-    /Saved new block – height:\s+3000[^\n]+nodes: node1, node2, node3/u
+    /Saved new block – height:\s+3000[^\n]+nodes: node1, node2, node3/u,
+    oneMinute
   );
   await waitForStdout('Agent: initial sync is complete.');
   t.pass();
@@ -579,9 +622,9 @@ test.serial('[e2e] creates expected indexes after initial sync', async (t) => {
 test.serial(
   '[e2e] after initial sync is complete, requests transactions as they are announced',
   async (t) => {
-    const node3RequestedTx = new Promise((resolve) => {
+    const node3RequestedTx = new Promise((res) => {
       node3.once('peergetdata', (_, message) => {
-        resolve(message.inventory);
+        res(message.inventory);
       });
     });
     const announcedHash = Buffer.from(invTestTx, 'hex');
@@ -605,10 +648,24 @@ test.serial(
       /* sql */ `SELECT encode(encode_transaction(transaction), 'hex') FROM transaction WHERE hash = $1;`,
       [hexToBin(halTxHash)]
     );
-    t.deepEqual(result.rows[0].encode, halTxRaw);
+    t.deepEqual(result.rows[0]!.encode, halTxRaw);
     t.pass();
   }
 );
+
+test.serial('[e2e] handles first chipnet CashTokens transaction', async (t) => {
+  peers.node1.sendMessage(
+    new peers.node1.messages.Transaction(new Transaction(chipnetCashTokensTx))
+  );
+  const delay = 1000;
+  await sleep(delay);
+  const result = await client.query<{ encode: string }>(
+    /* sql */ `SELECT encode(encode_transaction(transaction), 'hex') FROM transaction WHERE hash = $1;`,
+    [hexToBin(chipnetCashTokensTxHash)]
+  );
+  t.deepEqual(result.rows[0]!.encode, chipnetCashTokensTx);
+  t.pass();
+});
 
 test.serial(
   '[e2e] after initial sync is complete, requests and saves inbound transactions as they are announced',
@@ -624,19 +681,19 @@ test.serial(
       /* sql */ `SELECT encode(encode_transaction(transaction), 'hex') FROM transaction WHERE hash = $1;`,
       [hexToBin(halTxSpent)]
     );
-    t.deepEqual(result.rows[0].encode, halTxSpentRaw);
+    t.deepEqual(result.rows[0]!.encode, halTxSpentRaw);
     t.pass();
   }
 );
 
 test.serial('[e2e] get hex-encoded genesis block header', async (t) => {
-  /* eslint-disable @typescript-eslint/naming-convention, camelcase */
+  /* eslint-disable @typescript-eslint/naming-convention */
   const encodedHex = (
     await client.query<{ block_header_encoded_hex: string }>(
       /* sql */ `SELECT block_header_encoded_hex (block) FROM block WHERE height = 0;`
     )
-  ).rows[0].block_header_encoded_hex;
-  /* eslint-enable @typescript-eslint/naming-convention, camelcase */
+  ).rows[0]!.block_header_encoded_hex;
+  /* eslint-enable @typescript-eslint/naming-convention */
   t.deepEqual(
     encodedHex,
     '0100000000000000000000000000000000000000000000000000000000000000000000003ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a29ab5f49ffff001d1dac2b7c'
@@ -647,14 +704,14 @@ test.serial('[e2e] get hex-encoded genesis block transaction', async (t) => {
   const genesisTxHash = hexToBin(
     '4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b'
   );
-  /* eslint-disable @typescript-eslint/naming-convention, camelcase */
+  /* eslint-disable @typescript-eslint/naming-convention */
   const encodedHex = (
     await client.query<{ transaction_encoded_hex: string }>(
       /* sql */ `SELECT transaction_encoded_hex (transaction) FROM transaction WHERE hash = $1::bytea;`,
       [genesisTxHash]
     )
-  ).rows[0].transaction_encoded_hex;
-  /* eslint-enable @typescript-eslint/naming-convention, camelcase */
+  ).rows[0]!.transaction_encoded_hex;
+  /* eslint-enable @typescript-eslint/naming-convention */
   t.deepEqual(
     encodedHex,
     '01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff4d04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73ffffffff0100f2052a01000000434104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac00000000'
@@ -664,13 +721,13 @@ test.serial('[e2e] get hex-encoded genesis block transaction', async (t) => {
 test.serial(
   '[e2e] get hex-encoded genesis block (with transaction)',
   async (t) => {
-    /* eslint-disable @typescript-eslint/naming-convention, camelcase */
+    /* eslint-disable @typescript-eslint/naming-convention */
     const encodedHex = (
       await client.query<{ block_encoded_hex: string }>(
         /* sql */ `SELECT block_encoded_hex (block) FROM block WHERE height = 0;`
       )
-    ).rows[0].block_encoded_hex;
-    /* eslint-enable @typescript-eslint/naming-convention, camelcase */
+    ).rows[0]!.block_encoded_hex;
+    /* eslint-enable @typescript-eslint/naming-convention */
     t.deepEqual(encodedHex, genesisBlockRaw);
   }
 );
@@ -688,22 +745,22 @@ const newBlocks = (
 test.serial(
   '[e2e] syncs blocks as they arrive, handles multiple chain tips',
   async (t) => {
-    const [, tx1] = tipA[0].transactions;
+    const [, tx1] = tipA[0]!.transactions;
     peers.node1.sendMessage(new peers.node1.messages.Transaction(tx1));
-    logger.debug(`node1: sent tipA[0] transaction 0: ${tx1.hash}`);
-    newBlocks('node1', [tipA[0]]);
-    newBlocks('node2', [tipB[0]]);
-    newBlocks('node3', [tipB[0]]);
+    logger.debug(`node1: sent tipA[0] transaction 0: ${tx1!.hash}`);
+    newBlocks('node1', [tipA[0]!]);
+    newBlocks('node2', [tipB[0]!]);
+    newBlocks('node3', [tipB[0]!]);
     t.deepEqual(
       chainStates.node2.map((block) => block.header.hash),
       chainStates.node3.map((block) => block.header.hash)
     );
     await waitForStdout(/Saved new block – height:\s+3001[^\n]+nodes: node1/u);
     t.true(
-      /Saved new block – height:\s+3001[^\n]+new txs: 7\/8[^\n]+nodes: node1/u.test(
+      /Saved new block – height:\s+3001[^\n]+new txs: 3\/4[^\n]+nodes: node1/u.test(
         stdoutBuffer
       ),
-      '7 of 8 transactions should be new in tip A block 3001. Has the mockchain changed? (If so, update this test.)'
+      '3 of 4 transactions should be new in tip A block 3001. Has the mockchain changed? (If so, update this test.)'
     );
     await waitForStdout(
       /Saved new block – height:\s+3001[^\n]+nodes: node2, node3/u
@@ -713,10 +770,10 @@ test.serial(
 );
 
 test.serial('[e2e] handles re-org of a single block', async (t) => {
-  newBlocks('node1', [tipA[1]]);
-  newBlocks('node2', [tipB[1]]);
+  newBlocks('node1', [tipA[1]!]);
+  newBlocks('node2', [tipB[1]!]);
   chainStates.node3.pop();
-  newBlocks('node3', [tipA[0], tipA[1]]);
+  newBlocks('node3', [tipA[0]!, tipA[1]!]);
   t.deepEqual(
     chainStates.node1.map((block) => block.header.hash),
     chainStates.node3.map((block) => block.header.hash)
@@ -725,10 +782,10 @@ test.serial('[e2e] handles re-org of a single block', async (t) => {
     /node3: re-organization detected beginning at height: 3001. The following stale blocks were removed:/u
   );
   await waitForStdout(
-    /Saved new block – height:\s+3002[^\n]+hash: 047715681717a9aa9d860db5aa63d4173af24241f50227db8e95db979795b9c3[^\n]+nodes: node2/u
+    /Saved new block – height:\s+3002[^\n]+hash: a44a664d5acc560305fceb9ba3c7f195a5d78236c1705d5ae7434ba784005689[^\n]+nodes: node2/u
   );
   await waitForStdout(
-    /Saved new block – height:\s+3002[^\n]+hash: 0b7d5414e77dae1cc73fc38683b540569623a46b693082bd23b12e614fa219cf[^\n]+nodes: node1, node3/u
+    /Saved new block – height:\s+3002[^\n]+hash: 9c4feec6f35a54f2244f2ab14e1370e60713097be2ead8402e4ef68f96e07c8c[^\n]+nodes: node1, node3/u
   );
   t.pass();
 });
@@ -819,11 +876,11 @@ test.serial('[e2e] handles re-org of 100 blocks', async (t) => {
     chainStates.node3.map((block) => block.header.hash)
   );
   peers.node3.sendMessage(
-    peers.node3.messages.Inventory.forBlock(tipA[tipEnd - 1].header.hash)
+    peers.node3.messages.Inventory.forBlock(tipA[tipEnd - 1]!.header.hash)
   );
   await waitForStdout(
     `node3: received unexpected block inventory item with hash: ${swapEndianness(
-      tipA[tipEnd - 1].header.hash
+      tipA[tipEnd - 1]!.header.hash
     )}`
   );
   await waitForStdout(
@@ -868,29 +925,29 @@ test.serial(
   '[e2e] records double-spends accepted via mempool and via block',
   async (t) => {
     // eslint-disable-next-line prefer-destructuring
-    const tx1 = tipA[160].transactions[1];
-    const mock1 = generateMockDoubleSpend(tx1.inputs, true);
+    const tx1 = tipA[160]!.transactions[1];
+    const mock1 = generateMockDoubleSpend(tx1!.inputs, true);
     // TODO: race condition – this should work without a delay?
     const delay = 1000;
     peers.node1.sendMessage(new peers.node1.messages.Transaction(tx1));
     logger.debug(
-      `node1: sent original transaction to double-spend: ${tx1.hash}`
+      `node1: sent original transaction to double-spend: ${tx1!.hash}`
     );
     await sleep(delay);
     peers.node1.sendMessage(new peers.node1.messages.Transaction(mock1));
     logger.debug(`node1: sent double-spending transaction: ${mock1.hash}`);
     await sleep(delay);
-    newBlocks('node1', [tipA[160]]);
-    newBlocks('node2', [tipB[160]]);
-    newBlocks('node3', [tipA[160]]);
+    newBlocks('node1', [tipA[160]!]);
+    newBlocks('node2', [tipB[160]!]);
+    newBlocks('node3', [tipA[160]!]);
     logger.debug(
-      `node1: sent block including original transaction: ${tx1.hash}`
+      `node1: sent block including original transaction: ${tx1!.hash}`
     );
     await waitForStdout(/Saved new block – height:\s+3161[^\n]+nodes: node2/u);
     await waitForStdout(
       /Saved new block – height:\s+3161[^\n]+nodes: node1, node3/u
     );
-    /* eslint-disable @typescript-eslint/naming-convention, camelcase */
+    /* eslint-disable @typescript-eslint/naming-convention */
     const res = await client.query<{
       internal_id: number;
       node_internal_id: number;
@@ -900,18 +957,18 @@ test.serial(
     }>(
       /* sql */ `SELECT * FROM node_transaction_history WHERE transaction_internal_id IN (SELECT internal_id FROM transaction WHERE hash IN ($1::bytea, $2::bytea)) ORDER BY validated_at ASC;
          `,
-      [hexToBin(tx1.hash), hexToBin(mock1.hash)]
+      [hexToBin(tx1!.hash), hexToBin(mock1.hash)]
     );
-    /* eslint-enable @typescript-eslint/naming-convention, camelcase */
+    /* eslint-enable @typescript-eslint/naming-convention */
     // eslint-disable-next-line @typescript-eslint/no-magic-numbers
     t.deepEqual(res.rows.length, 2);
-    t.deepEqual(res.rows[0].node_internal_id, res.rows[1].node_internal_id);
-    t.deepEqual(res.rows[0].replaced_at, res.rows[1].validated_at);
+    t.deepEqual(res.rows[0]!.node_internal_id, res.rows[1]!.node_internal_id);
+    t.deepEqual(res.rows[0]!.replaced_at, res.rows[1]!.validated_at);
     t.true(
-      new Date(res.rows[0].validated_at) <= new Date(res.rows[0].replaced_at)
+      new Date(res.rows[0]!.validated_at) <= new Date(res.rows[0]!.replaced_at)
     );
     t.true(
-      new Date(res.rows[1].validated_at) <= new Date(res.rows[1].replaced_at)
+      new Date(res.rows[1]!.validated_at) <= new Date(res.rows[1]!.replaced_at)
     );
     t.pass();
   }
@@ -920,28 +977,29 @@ test.serial(
 test.serial(
   '[e2e] removes node_transaction entries which are confirmed by a block',
   async (t) => {
-    const [, tx1, tx2, tx3] = tipA[161].transactions;
+    const [, tx1, tx2, tx3] = tipA[161]!.transactions;
     peers.node1.sendMessage(new peers.node1.messages.Transaction(tx1));
-    logger.debug(`node1: sent tx1: ${tx1.hash}`);
+    logger.debug(`node1: sent tx1: ${tx1!.hash}`);
     peers.node1.sendMessage(new peers.node1.messages.Transaction(tx2));
-    logger.debug(`node1: sent tx2: ${tx2.hash}`);
+    logger.debug(`node1: sent tx2: ${tx2!.hash}`);
     peers.node1.sendMessage(new peers.node1.messages.Transaction(tx3));
-    logger.debug(`node1: sent tx3: ${tx2.hash}`);
+    logger.debug(`node1: sent tx3: ${tx2!.hash}`);
     const delay = 100;
     await sleep(delay);
     const mempool1 = await client.query<{ encode: string }>(
       /* sql */ `SELECT encode(hash, 'hex') FROM node_transaction JOIN transaction ON node_transaction.transaction_internal_id = transaction.internal_id ORDER BY hash ASC;`
     );
     t.deepEqual(mempool1.rows, [
-      { encode: tx3.hash },
-      { encode: tx1.hash },
-      { encode: tx2.hash },
+      { encode: tx1!.hash },
+      { encode: tx3!.hash },
+      { encode: tx2!.hash },
+      { encode: chipnetCashTokensTxHash },
       { encode: halTxSpent },
       { encode: halTxHash },
     ]);
-    newBlocks('node1', [tipA[161]]);
-    newBlocks('node2', [tipB[161]]);
-    newBlocks('node3', [tipA[161]]);
+    newBlocks('node1', [tipA[161]!]);
+    newBlocks('node2', [tipB[161]!]);
+    newBlocks('node3', [tipA[161]!]);
     t.deepEqual(
       chainStates.node1.map((block) => block.header.hash),
       chainStates.node3.map((block) => block.header.hash)
@@ -953,13 +1011,17 @@ test.serial(
     const mempool2 = await client.query<{ encode: string }>(
       /* sql */ `SELECT encode(hash, 'hex') FROM node_transaction JOIN transaction ON node_transaction.transaction_internal_id = transaction.internal_id ORDER BY hash ASC;`
     );
-    t.deepEqual(mempool2.rows, [{ encode: halTxSpent }, { encode: halTxHash }]);
+    t.deepEqual(mempool2.rows, [
+      { encode: chipnetCashTokensTxHash },
+      { encode: halTxSpent },
+      { encode: halTxHash },
+    ]);
     t.pass();
   }
 );
 
 test.serial('[e2e] shuts down with SIGINT', async (t) => {
-  chaingraphProcess2.kill('SIGINT');
+  chaingraphProcess2!.kill('SIGINT');
   await waitForStdout('Shutting down...');
   await waitForStdout('Exiting...');
   await chaingraphProcess2;
@@ -991,10 +1053,14 @@ test.serial(
 
 test.serial('[e2e] catches up a new node via headers', async (t) => {
   await waitForStdout(
-    `node4: accepted 2000 existing blocks from height 1 to height 2000 (hash: ${chainStates.node3[2000].header.hash})`
+    `node4: accepted 2000 existing blocks from height 1 to height 2000 (hash: ${
+      chainStates.node3[2000]!.header.hash
+    })`
   );
   await waitForStdout(
-    `node4: accepted 1162 existing blocks from height 2001 to height 3162 (hash: ${chainStates.node3[3162].header.hash})`
+    `node4: accepted 1162 existing blocks from height 2001 to height 3162 (hash: ${
+      chainStates.node3[3162]!.header.hash
+    })`
   );
   const node4Blocks = await client.query<{ encode: string; height: string }>(
     /* sql */ `SELECT encode(hash, 'hex'), height from node_block JOIN node ON node.internal_id = node_block.node_internal_id JOIN block ON block.internal_id = node_block.block_internal_id WHERE node.name = 'node4' ORDER BY height DESC;`
@@ -1002,7 +1068,7 @@ test.serial('[e2e] catches up a new node via headers', async (t) => {
   const expectedCount = 3163;
   t.deepEqual(node4Blocks.rowCount, expectedCount);
   t.deepEqual(node4Blocks.rows[0], {
-    encode: tipA[161].header.hash,
+    encode: tipA[161]!.header.hash,
     height: '3162',
   });
   await waitForStdout('Agent: enabled mempool tracking.');
@@ -1047,33 +1113,249 @@ test.serial('[e2e] syncs remaining blocks one-by-one', async (t) => {
   t.pass();
 });
 
-test.todo('[e2e] simulates syncing against a mid-IBD node');
+test.serial('[e2e] [api] 404: logs unknown request urls', async (t) => {
+  const res = await got(
+    `http://localhost:${chaingraphInternalApiPort}/unknown-URL`,
+    { throwHttpErrors: false }
+  );
+  t.deepEqual(res.statusCode, StatusCode.notFound);
+  t.deepEqual(res.body, '{"error":"not found"}');
+  await waitForStdout('[API] issued 404 for req.url: /unknown-URL');
+  t.pass();
+});
+
+/* eslint-disable @typescript-eslint/naming-convention, camelcase */
+const validRequestWithoutNode = {
+  action: { name: 'send_transaction' },
+  input: {
+    request: {
+      encoded_hex:
+        '0100000001c9cf39d7d29ecb8ea68e8fd2019ae047ca3c36e6e4d6a2f4d8c070eced00fdd1010000006441db7f7de61e8ed43984921ded4fb6148152085a5f31725c56b1da86d929d4fc4346c516edf93ac81dcf5b84518ae1dd5dec8ad863f891ac4a464ae8fabd22375e41210334242a73fe4b0d88ddfe6dc7202fa1b60785dac3fe5f7d92a616f8792f5f3a47feffffff0200e87648170000001976a914ab4cc0d4c6ffadbce88ee74a7b856fe6dd02acb688acd4de9265170100001976a91422afddf849a9f2f27aabb7d88e06a1919c0a77d688acbc000200',
+      // node_internal_id: [number],
+    },
+  },
+  request_query:
+    'mutation {\n  send_transaction(request: {node_internal_id: 1, encoded_hex: "0100000001c9cf39d7d29ecb8ea68e8fd2019ae047ca3c36e6e4d6a2f4d8c070eced00fdd1010000006441db7f7de61e8ed43984921ded4fb6148152085a5f31725c56b1da86d929d4fc4346c516edf93ac81dcf5b84518ae1dd5dec8ad863f891ac4a464ae8fabd22375e41210334242a73fe4b0d88ddfe6dc7202fa1b60785dac3fe5f7d92a616f8792f5f3a47feffffff0200e87648170000001976a914ab4cc0d4c6ffadbce88ee74a7b856fe6dd02acb688acd4de9265170100001976a91422afddf849a9f2f27aabb7d88e06a1919c0a77d688acbc000200"}) {\n    transaction_hash\n    validation_error_message\n    validation_success\n    transmission_error_message\n    transmission_success\n  }\n}\n',
+  session_variables: { 'x-hasura-role': 'public' },
+};
+
+test.serial(
+  '[e2e] [api] /send-transaction: malformed (missing input)',
+  async (t) => {
+    const res = await got.post(
+      `http://localhost:${chaingraphInternalApiPort}/send-transaction`,
+      {
+        json: { ...validRequestWithoutNode, input: {} },
+        throwHttpErrors: false,
+      }
+    );
+    t.deepEqual(res.statusCode, StatusCode.badRequest);
+    t.deepEqual(res.body, '{"message":"malformed request"}');
+    await waitForStdout('[API] /send-transaction: malformed request.');
+    t.pass();
+  }
+);
+
+test.serial(
+  '[e2e] [api] /send-transaction: malformed (missing encoded_hex)',
+  async (t) => {
+    const res = await got.post(
+      `http://localhost:${chaingraphInternalApiPort}/send-transaction`,
+      {
+        json: {
+          ...validRequestWithoutNode,
+          input: { request: { node_internal_id: 1 } },
+        },
+        throwHttpErrors: false,
+      }
+    );
+    t.deepEqual(res.statusCode, StatusCode.badRequest);
+    t.deepEqual(res.body, `{"message":"'encoded_hex' must be a string"}`);
+  }
+);
+
+test.serial(
+  '[e2e] [api] /send-transaction: malformed (missing node_internal_id)',
+  async (t) => {
+    const res = await got.post(
+      `http://localhost:${chaingraphInternalApiPort}/send-transaction`,
+      {
+        json: validRequestWithoutNode,
+        throwHttpErrors: false,
+      }
+    );
+    t.deepEqual(res.statusCode, StatusCode.badRequest);
+    t.deepEqual(res.body, `{"message":"'node_internal_id' must be a number"}`);
+  }
+);
+
+test.serial(
+  '[e2e] [api] /send-transaction: malformed (node_internal_id is not a number)',
+  async (t) => {
+    const res = await got.post(
+      `http://localhost:${chaingraphInternalApiPort}/send-transaction`,
+      {
+        json: {
+          ...validRequestWithoutNode,
+          input: {
+            request: {
+              encoded_hex: validRequestWithoutNode.input.request.encoded_hex,
+              node_internal_id: 'invalid',
+            },
+          },
+        },
+        throwHttpErrors: false,
+      }
+    );
+    t.deepEqual(res.statusCode, StatusCode.badRequest);
+    t.deepEqual(res.body, `{"message":"'node_internal_id' must be a number"}`);
+  }
+);
+
+test.serial(
+  '[e2e] [api] /send-transaction: malformed (encoded_hex is not a string)',
+  async (t) => {
+    const res = await got.post(
+      `http://localhost:${chaingraphInternalApiPort}/send-transaction`,
+      {
+        json: {
+          ...validRequestWithoutNode,
+          input: {
+            request: {
+              encoded_hex: 1,
+              node_internal_id: 0,
+            },
+          },
+        },
+        throwHttpErrors: false,
+      }
+    );
+    t.deepEqual(res.statusCode, StatusCode.badRequest);
+    t.deepEqual(res.body, `{"message":"'encoded_hex' must be a string"}`);
+  }
+);
+
+test.serial(
+  '[e2e] [api] /send-transaction: unknown node_internal_id',
+  async (t) => {
+    const res = await got.post(
+      `http://localhost:${chaingraphInternalApiPort}/send-transaction`,
+      {
+        json: {
+          ...validRequestWithoutNode,
+          input: {
+            request: {
+              encoded_hex: validRequestWithoutNode.input.request.encoded_hex,
+              node_internal_id: 100,
+            },
+          },
+        },
+        throwHttpErrors: false,
+      }
+    );
+    t.deepEqual(res.statusCode, StatusCode.success);
+    t.deepEqual(
+      res.body,
+      JSON.stringify({
+        transaction_hash:
+          'dd92bef1b09c1c2eaf9a9f0ce29d330bffa54a3003d44767d3e32b3f6fbab0dd',
+        validation_success: true,
+        // eslint-disable-next-line sort-keys
+        transmission_error_message:
+          'Unable to connect to the requested node (node_internal_id: 100).',
+        transmission_success: false,
+      })
+    );
+  }
+);
+
+// eslint-disable-next-line functional/no-let
+let node1InternalId = 0;
+test.serial('[e2e] [api] /send-transaction: invalid TX', async (t) => {
+  node1InternalId = (
+    await client.query<{ internal_id: number }>(
+      /* sql */ `SELECT internal_id FROM node ORDER BY name ASC`
+    )
+  ).rows[0]!.internal_id;
+  const res = await got.post(
+    `http://localhost:${chaingraphInternalApiPort}/send-transaction`,
+    {
+      json: {
+        ...validRequestWithoutNode,
+        input: {
+          request: {
+            encoded_hex: '00',
+            node_internal_id: node1InternalId,
+          },
+        },
+      },
+    }
+  );
+  t.deepEqual(res.statusCode, StatusCode.success);
+  t.deepEqual(
+    res.body,
+    JSON.stringify({
+      transaction_hash:
+        '9a538906e6466ebd2617d321f71bc94e56056ce213d366773699e28158e00614',
+      validation_error_message:
+        'Error reading transaction. Error reading Uint32LE: requires 4 bytes. Provided length: 1',
+      validation_success: false,
+      // eslint-disable-next-line sort-keys
+      transmission_success: false,
+    })
+  );
+});
+
+test.serial('[e2e] [api] /send-transaction: valid', async (t) => {
+  const res = await got.post(
+    `http://localhost:${chaingraphInternalApiPort}/send-transaction`,
+    {
+      json: {
+        ...validRequestWithoutNode,
+        input: {
+          request: {
+            encoded_hex: validRequestWithoutNode.input.request.encoded_hex,
+            node_internal_id: node1InternalId,
+          },
+        },
+      },
+    }
+  );
+  t.deepEqual(res.statusCode, StatusCode.success);
+  t.deepEqual(
+    res.body,
+    JSON.stringify({
+      transaction_hash:
+        'dd92bef1b09c1c2eaf9a9f0ce29d330bffa54a3003d44767d3e32b3f6fbab0dd',
+      validation_success: true,
+      // eslint-disable-next-line sort-keys
+      transmission_success: true,
+    })
+  );
+});
+/* eslint-enable @typescript-eslint/naming-convention, camelcase */
 
 /**
- * These tests run concurrently after all serial tests have completed. They can
- * also be run independently via `yarn test:e2e:postgres`.
+ * The below tests run concurrently after all serial tests have completed.
  */
 
-const bytecodeFunction: Macro<[string, string, string]> = async (
-  t,
-  functionName,
-  bytecodeHex,
-  patternHex
+/**
+ * Macro to test Chaingraph's built-in Postgres functions; these can also be run
+ * independently via `yarn test:e2e:postgres`.
+ */
+const bytecodeFunction = test.macro<[string, string, string]>({
   // eslint-disable-next-line max-params
-) => {
-  const result = await client.query<{ encode: string }>(
-    /* sql */ `SELECT encode(${functionName} ($1), 'hex');`,
-    [hexToBin(bytecodeHex)]
-  );
-  t.deepEqual(result.rows[0].encode, patternHex);
-};
-bytecodeFunction.title = (
-  providedTitle,
-  functionName,
-  _bytecodeHex,
-  patternHex
+  exec: async (t, functionName, bytecodeHex, patternHex) => {
+    const result = await client.query<{ encode: string }>(
+      /* sql */ `SELECT encode(${functionName} ($1), 'hex');`,
+      [hexToBin(bytecodeHex)]
+    );
+    t.deepEqual(result.rows[0]!.encode, patternHex);
+  },
   // eslint-disable-next-line max-params
-) => `[e2e] [postgres] ${functionName} – ${patternHex}: ${providedTitle ?? ''}`;
+  title: (providedTitle, functionName, _bytecodeHex, patternHex) =>
+    `[e2e] [postgres] ${functionName} – ${patternHex}: ${providedTitle ?? ''}`,
+});
 
 test(
   'P2PKH',
@@ -1306,7 +1588,7 @@ test('[e2e] [postgres] encode_uint16le', async (t) => {
         /* sql */ `SELECT encode(encode_uint16le ($1), 'hex');`,
         [encoded]
       )
-    ).rows[0].encode;
+    ).rows[0]!.encode;
   /* eslint-disable @typescript-eslint/no-magic-numbers */
   t.deepEqual(await query(0), '0000');
   t.deepEqual(await query(1), '0100');
@@ -1328,7 +1610,7 @@ test('[e2e] [postgres] encode_uint32le', async (t) => {
         /* sql */ `SELECT encode(encode_uint32le ($1), 'hex');`,
         [encoded]
       )
-    ).rows[0].encode;
+    ).rows[0]!.encode;
   /* eslint-disable @typescript-eslint/no-magic-numbers */
   t.deepEqual(await query(0), '00000000');
   t.deepEqual(await query(1), '01000000');
@@ -1357,7 +1639,7 @@ test('[e2e] [postgres] encode_int32le', async (t) => {
         /* sql */ `SELECT encode(encode_int32le ($1), 'hex');`,
         [encoded]
       )
-    ).rows[0].encode;
+    ).rows[0]!.encode;
   /* eslint-disable @typescript-eslint/no-magic-numbers, line-comment-position */
   t.deepEqual(await query(1), '01000000');
   t.deepEqual(await query(2), '02000000');
@@ -1383,7 +1665,7 @@ test('[e2e] [postgres] encode_uint64le', async (t) => {
         /* sql */ `SELECT encode(encode_uint64le ($1), 'hex');`,
         [encoded]
       )
-    ).rows[0].encode;
+    ).rows[0]!.encode;
   /* eslint-disable @typescript-eslint/no-magic-numbers */
   t.deepEqual(await query(0), '0000000000000000');
   t.deepEqual(await query(1), '0100000000000000');
@@ -1400,14 +1682,14 @@ test('[e2e] [postgres] encode_uint64le', async (t) => {
   /* eslint-enable @typescript-eslint/no-magic-numbers */
 });
 
-test('[e2e] [postgres] encode_bitcoin_var_int', async (t) => {
+test('[e2e] [postgres] encode_compact_uint', async (t) => {
   const query = async (encoded: bigint | number) =>
     (
       await client.query<{ encode: string }>(
-        /* sql */ `SELECT encode(encode_bitcoin_var_int ($1), 'hex');`,
+        /* sql */ `SELECT encode(encode_compact_uint ($1), 'hex');`,
         [encoded]
       )
-    ).rows[0].encode;
+    ).rows[0]!.encode;
   /* eslint-disable @typescript-eslint/no-magic-numbers */
   t.deepEqual(await query(0), '00');
   t.deepEqual(await query(1), '01');

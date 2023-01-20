@@ -1,5 +1,12 @@
 import type { Input, Output, Transaction } from '@bitauth/libauth';
 
+export interface ChaingraphOutput extends Output<string, string> {
+  fungibleTokenAmount?: bigint;
+  tokenCategory?: string;
+  nonfungibleTokenCapability?: 'minting' | 'mutable' | 'none';
+  nonfungibleTokenCommitment?: string;
+}
+
 /**
  * Note: Postgres doesn't support an unsigned 8-byte integer format, and the
  * `numeric` type comes with performance and storage size tradeoffs. Instead,
@@ -13,7 +20,7 @@ import type { Input, Output, Transaction } from '@bitauth/libauth';
  * these assumptions will need to be revisited.
  */
 export interface ChaingraphTransaction
-  extends Transaction<Input<string, string>, Output<string, number>> {
+  extends Transaction<Input<string, string>, ChaingraphOutput> {
   hash: string;
   isCoinbase: boolean;
   sizeBytes: number;

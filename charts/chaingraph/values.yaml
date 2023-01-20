@@ -28,7 +28,7 @@ agent:
   # Format: `NETWORK_MAGIC:RAW_GENESIS_BLOCK_HEX`, comma separated.
   # E.g. CHAINGRAPH_GENESIS_BLOCKS=e3e1f3e8:rawblockhex,deadbeef:rawblockhex
   genesisBlocks: 'e3e1f3e8:0100000000000000000000000000000000000000000000000000000000000000000000003ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a29ab5f49ffff001d1dac2b7c0101000000010000000000000000000000000000000000000000000000000000000000000000ffffffff4d04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73ffffffff0100f2052a01000000434104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac00000000,dab5bffa:0100000043497fd7f826957108f4a30fd9cec3aeba79972084e90ead01ea330900000000bac8b0fa927c0ac8234287e33c5f74d38d354820e24756ad709d7038fc5f31f020e7494dffff001d03e4b6720101000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0e0420e7494d017f062f503253482fffffffff0100f2052a010000002321021aeaf2f8638a129a3156fbe7e5ef635226b0bafd495ff03afe2c843d7e3a4b51ac00000000,e2b7daaf:0100000000000000000000000000000000000000000000000000000000000000000000003ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4af1a93c5fffff001d01d3cd060101000000010000000000000000000000000000000000000000000000000000000000000000ffffffff4d04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73ffffffff0100f2052a01000000434104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac00000000'
-  # The port on which the health check and process monitoring metrics should be served.
+  # The port at which the agent's internal API will listen.
   port: 3200
   # The minimum log level to print to STDOUT. May be `trace`, `debug`, `info`, `warn`, `error`, or `fatal`.
   logLevel: 'debug'
@@ -38,15 +38,24 @@ bitcoinCashNode:
   # Enable a local Bitcoin Cash Node.
   enable: false
   # The precise Bitcoin Cash Node Docker image to use.
-  image: chaingraph/bitcoin-cash-node@sha256:9375c1969fc65c9e531cc83aed71b8e5af98e31327e65bd67218d2f664d5866b # v24.0.0
+  image: chaingraph/bitcoin-cash-node@sha256:128b0219ea9f6b26a9688adabd792a859c628ff8571cc2740e7fb6295c442b99 # v25.0.0
   # The size of the volume to provision for Bitcoin Cash Node.
   volumeSize:  210Gi
 
-# Configuration settings for the built-in Bitcoin Cash Node (Testnet)
+# Configuration settings for the built-in Bitcoin Cash Node (Testnet4)
 bitcoinCashNodeTestnet:
-  # Enable a local Bitcoin Cash Node.
+  # Enable a local Bitcoin Cash Node in Testnet4 mode.
   enable: true
-  # The precise Bitcoin Cash Node (Testnet) Docker image to use. If not set, the value for bitcoinCashNode.image will be used.
+  # The precise Bitcoin Cash Node (Testnet4) Docker image to use. If not set, the value for bitcoinCashNode.image will be used.
+  image: ''
+  # The size of the volume to provision for Bitcoin Cash Node.
+  volumeSize: 2Gi
+
+# Configuration settings for the built-in Bitcoin Cash Node (Chipnet)
+bitcoinCashNodeChipnet:
+  # Enable a local Bitcoin Cash Node in Chipnet mode.
+  enable: true
+  # The precise Bitcoin Cash Node (Chipnet) Docker image to use. If not set, the value for bitcoinCashNode.image will be used.
   image: ''
   # The size of the volume to provision for Bitcoin Cash Node.
   volumeSize: 2Gi
@@ -60,7 +69,7 @@ postgres:
   externalDbUrl: ''
   # The precise Postgres Docker image to use.
   # This is only used if `externalDbUrl` is not set.
-  image: postgres@sha256:f5b88e89628de59e0cd28b25d7c26ac2f43fdd235c7263aa98ff971898fe9c5f # v14.0
+  image: postgres@sha256:818389c4425c2d90c10d69ba10dce677b04df51dfb2d53bc553981be5705af55 # v14.6
   # The Postgres username to use.
   # NOTE: this can only be configured from the chart during database creation. If the database already exists, the Postgres username/password must be created or updated manually before changing this value.
   # This is only used if `externalDbUrl` is not set.
@@ -101,16 +110,19 @@ hasura:
   useLoadBalancer: false
   # Enable enforcement of the configured allow-list. While this is disabled for simplicity during development, it is important for hardening production APIs against maliciously expensive queries.
   enableAllowList: false
+  # If set, the `WEBHOOK_HANDLER_BASE_URL` environment variable will be configured to this value. By default, this will be set to the URL of the agent's internal API.
+  # E.g. to expose a locally-running agent to this hasura instance, try: `http://host.docker.internal:3200`
+  webhookHandlerBaseUrl: ''
 
 pgAdmin:
   # Enable a local pgAdmin installation. (This should only be used during development.)
   enable: false
   # The precise pgAdmin Docker image to use (only used if `pgAdmin.enable` is `true`).
-  image: dpage/pgadmin4@sha256:d2b89e728b33f466cad674a16c6b30b28b1823d9f03b07f0d60654cb5bba037c
+  image: dpage/pgadmin4@sha256:49aa611e99d306ba864a7211fad4b02ac31f59edeb2e93aeb4bed032429a27cc #v6.18
   # The size of the volume to provision for pgAdmin (only used if `pgAdmin.enable` is `true`).
   volumeSize: 10Gi
   # The admin email/username used to log in to pgAdmin
-  adminEmail: 'admin@cluster.local'
+  adminEmail: 'admin@chaingraph.cash'
   # The admin password used to log in to pgAdmin
   adminPassword: 'very_insecure_pgadmin_password'
 
@@ -120,4 +132,4 @@ pgHero:
   # To enable pgHero for an existing database which uses chaingraph-secrets, export data.postgresPassword and set postgres.password manually.
   enable: false
   # The precise pgHero Docker image to use (only used if `pgAdmin.enable` is `true`).
-  image: ankane/pghero@sha256:292ed571a0d76dd2a023f383cccb6ba59a7b7c336433c8e9502010ca1f1b4294
+  image: ankane/pghero@sha256:2a3e8ea357b5256590510322f4c25ea2ed070c4b284ea2967dee014aa9597c96 #v3.1.0

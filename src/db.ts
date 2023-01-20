@@ -1,21 +1,21 @@
-import { Pool } from 'pg';
+import pg from 'pg';
 
-import type { Agent } from './agent';
+import type { Agent } from './agent.js';
 import {
   computeIndexCreationProgress,
   indexDefinitions,
-} from './components/db-utils';
+} from './components/db-utils.js';
 import {
   postgresConnectionString,
   postgresMaxConnections,
   postgresSynchronousCommit,
-} from './config';
+} from './config.js';
 import type {
   ChaingraphBlock,
   ChaingraphTransaction,
-} from './types/chaingraph';
+} from './types/chaingraph.js';
 
-export const pool = new Pool({
+export const pool = new pg.Pool({
   connectionString: postgresConnectionString,
   max: postgresMaxConnections,
 });
@@ -25,9 +25,7 @@ export const pool = new Pool({
  * hex (e.g. `c0de`).
  * @param bytea - the string in Postgres bytea format
  */
-export const byteaStringToHex = (bytea: string) => {
-  return bytea.replace('\\x', '');
-};
+export const byteaStringToHex = (bytea: string) => bytea.replace('\\x', '');
 
 /**
  * Format a hex-encoded string as a Postgres "bytea" string (e.g. `\xc0de`).
@@ -69,7 +67,7 @@ export const blockArrayToHashChain = (
   const sortedByHeight = blocks.sort(
     (a, b) => Number(a.height) - Number(b.height)
   );
-  const bestHeight = Number(sortedByHeight[sortedByHeight.length - 1].height);
+  const bestHeight = Number(sortedByHeight[sortedByHeight.length - 1]!.height);
   const chain = Array.from({ length: bestHeight + 1 }).fill(null) as (
     | string
     | null
@@ -116,7 +114,7 @@ export const registerTrustedNodeWithDb = async (node: {
     RETURNING internal_id;
 `;
   const client = await pool.connect();
-  // eslint-disable-next-line @typescript-eslint/naming-convention, camelcase
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   const nodeInternalIdQuery = await client.query<{ internal_id: number }>(
     registerNode,
     [
@@ -126,7 +124,7 @@ export const registerTrustedNodeWithDb = async (node: {
       node.latestConnectionBeganAt,
     ]
   );
-  const internalId = nodeInternalIdQuery.rows[0].internal_id;
+  const internalId = nodeInternalIdQuery.rows[0]!.internal_id;
   const acceptedBlocksQuery = await client.query<{
     height: string;
     hash: Buffer;
@@ -166,13 +164,29 @@ WITH transaction_values (hash, version, locktime, size_bytes, is_coinbase) AS (
   }::bigint, ${transaction.locktime}::bigint, ${
     transaction.sizeBytes
   }::bigint, ${transaction.isCoinbase.toString()}::boolean)
-), output_values (output_index, value_satoshis, locking_bytecode) AS (
+), output_values (output_index, value_satoshis, locking_bytecode, token_category, fungible_token_amount, nonfungible_token_capability, nonfungible_token_commitment) AS (
   VALUES ${transaction.outputs
     .map(
       (output, outputIndex) =>
-        `(${outputIndex}::bigint, ${
-          output.satoshis
-        }::bigint, '${hexToByteaString(output.lockingBytecode)}'::bytea)`
+        `(${outputIndex}::bigint, ${output.valueSatoshis.toString()}::bigint, '${hexToByteaString(
+          output.lockingBytecode
+        )}'::bytea, ${
+          output.tokenCategory === undefined
+            ? 'NULL::bytea'
+            : `'${hexToByteaString(output.tokenCategory)}'::bytea`
+        }, ${
+          output.fungibleTokenAmount === undefined
+            ? 'NULL'
+            : `${output.fungibleTokenAmount.toString()}::bigint`
+        }, ${
+          output.nonfungibleTokenCapability === undefined
+            ? 'NULL'
+            : `'${output.nonfungibleTokenCapability}'::enum_nonfungible_token_capability`
+        }, ${
+          output.nonfungibleTokenCommitment === undefined
+            ? 'NULL'
+            : `'${hexToByteaString(output.nonfungibleTokenCommitment)}'::bytea`
+        })`
     )
     .join(',')}
 ), input_values (input_index, outpoint_index, sequence_number, outpoint_transaction_hash, unlocking_bytecode) AS (
@@ -201,8 +215,8 @@ WITH transaction_values (hash, version, locktime, size_bytes, is_coinbase) AS (
     ON CONFLICT ON CONSTRAINT "transaction_hash_key" DO NOTHING
     RETURNING hash AS transaction_hash, internal_id AS transaction_internal_id
 ), insert_outputs AS (
-  INSERT INTO output (transaction_hash, output_index, value_satoshis, locking_bytecode)
-    SELECT transaction_hash, output_index, value_satoshis, locking_bytecode FROM output_values CROSS JOIN new_transaction
+  INSERT INTO output (transaction_hash, output_index, value_satoshis, locking_bytecode, token_category, fungible_token_amount, nonfungible_token_capability, nonfungible_token_commitment)
+    SELECT transaction_hash, output_index, value_satoshis, locking_bytecode, token_category::bytea, fungible_token_amount::bigint, nonfungible_token_capability::enum_nonfungible_token_capability, nonfungible_token_commitment::bytea FROM output_values CROSS JOIN new_transaction
 ), insert_inputs AS (
   INSERT INTO input (transaction_internal_id, input_index, outpoint_index, sequence_number, outpoint_transaction_hash, unlocking_bytecode)
     SELECT transaction_internal_id, input_index, outpoint_index, sequence_number, outpoint_transaction_hash, unlocking_bytecode FROM input_values CROSS JOIN new_transaction
@@ -351,15 +365,33 @@ unknown_input_values (transaction_hash, input_index, outpoint_index, sequence_nu
     )
     .join(',')}
 ),
-unknown_output_values (transaction_hash, output_index, value_satoshis, locking_bytecode) AS (
+unknown_output_values (transaction_hash, output_index, value_satoshis, locking_bytecode, token_category, fungible_token_amount, nonfungible_token_capability, nonfungible_token_commitment) AS (
   VALUES ${outputs
     .map(
       (output) =>
         `('${hexToByteaString(output.transactionHash)}'::bytea, ${
           output.outputIndex
-        }::bigint, ${output.content.satoshis}::bigint, '${hexToByteaString(
+        }::bigint, ${output.content.valueSatoshis.toString()}::bigint, '${hexToByteaString(
           output.content.lockingBytecode
-        )}'::bytea)`
+        )}'::bytea, ${
+          output.content.tokenCategory === undefined
+            ? 'NULL::bytea'
+            : `'${hexToByteaString(output.content.tokenCategory)}'::bytea`
+        }, ${
+          output.content.fungibleTokenAmount === undefined
+            ? 'NULL::bigint'
+            : `${output.content.fungibleTokenAmount.toString()}::bigint`
+        }, ${
+          output.content.nonfungibleTokenCapability === undefined
+            ? 'NULL::enum_nonfungible_token_capability'
+            : `'${output.content.nonfungibleTokenCapability}'::enum_nonfungible_token_capability`
+        }, ${
+          output.content.nonfungibleTokenCommitment === undefined
+            ? 'NULL::bytea'
+            : `'${hexToByteaString(
+                output.content.nonfungibleTokenCommitment
+              )}'::bytea`
+        })`
     )
     .join(',')}
 ),
@@ -370,8 +402,8 @@ newly_saved_transactions (hash, internal_id) AS (
     RETURNING hash, internal_id
 ),
 newly_saved_outputs AS (
-  INSERT INTO output (transaction_hash, output_index, value_satoshis, locking_bytecode)
-    SELECT transaction_hash, output_index, value_satoshis, locking_bytecode FROM unknown_output_values
+  INSERT INTO output (transaction_hash, output_index, value_satoshis, locking_bytecode, token_category, fungible_token_amount, nonfungible_token_capability, nonfungible_token_commitment)
+    SELECT transaction_hash, output_index, value_satoshis, locking_bytecode, token_category::bytea, fungible_token_amount::bigint, nonfungible_token_capability::enum_nonfungible_token_capability, nonfungible_token_commitment::bytea FROM unknown_output_values
     WHERE transaction_hash IN (SELECT hash FROM newly_saved_transactions)
 ),
 newly_saved_inputs AS (
@@ -444,7 +476,7 @@ INSERT INTO node_block (node_internal_id, block_internal_id, accepted_at)
     addAllTransactions
   );
   const attemptedSavedTransactions = blockTransactions.unknown;
-  const savedTransactionCount = Number(saveTransactionsResult.rows[0].count);
+  const savedTransactionCount = Number(saveTransactionsResult.rows[0]!.count);
   const transactionCacheMisses =
     attemptedSavedTransactions.length - savedTransactionCount;
   await client.query(addBlockQuery);
@@ -626,12 +658,12 @@ export const getIndexCreationProgress = async () => {
   const client = await pool.connect();
   const res = await client.query<{
     query: string;
-    /* eslint-disable camelcase, @typescript-eslint/naming-convention */
+    /* eslint-disable @typescript-eslint/naming-convention */
     blocks_done: string;
     blocks_total: string;
     tuples_done: string;
     tuples_total: string;
-    /* eslint-enable camelcase, @typescript-eslint/naming-convention */
+    /* eslint-enable @typescript-eslint/naming-convention */
   }>(/* sql */ `
 SELECT a.query, p.blocks_total, p.blocks_done, p.tuples_total, p.tuples_done
 FROM pg_stat_progress_create_index p

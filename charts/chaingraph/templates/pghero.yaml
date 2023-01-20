@@ -24,6 +24,16 @@ spec:
       - image: {{ .Values.pgHero.image }}
         imagePullPolicy: "IfNotPresent" # required to avoid attempting to re-pull local images
         name: pghero
+        env:
+          - name: DATABASE_URL
+          {{ if .Values.postgres.externalDbUrl }}
+            value: {{ .Values.postgres.externalDbUrl }}
+          {{ else }}
+            valueFrom:
+              secretKeyRef:
+                name: chaingraph-secrets
+                key: postgresConnectionString
+          {{ end }}
         ports:
         - containerPort: 8080
           protocol: TCP

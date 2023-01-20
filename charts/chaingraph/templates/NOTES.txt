@@ -23,14 +23,19 @@ disabled (managed externally)
 {{ end }}
 --- Internal Trusted Nodes ---
 {{ if .Values.bitcoinCashNode.enable -}}
-  Bitcoin Cash Node (mainnet): enabled (requested volume size: {{ .Values.bitcoinCashNode.volumeSize }}, image: {{ .Values.bitcoinCashNode.image }})
+  Bitcoin Cash Node (mainnet):  enabled (requested volume size: {{ .Values.bitcoinCashNode.volumeSize }}, image: {{ .Values.bitcoinCashNode.image }})
 {{ else -}}
-  Bitcoin Cash Node (mainnet): disabled
+  Bitcoin Cash Node (mainnet):  disabled
 {{ end -}}
 {{ if .Values.bitcoinCashNodeTestnet.enable -}}
-  Bitcoin Cash Node (testnet): enabled (requested volume size: {{ .Values.bitcoinCashNodeTestnet.volumeSize }}, image: {{ .Values.bitcoinCashNodeTestnet.image | default .Values.bitcoinCashNode.image }})
+  Bitcoin Cash Node (testnet4): enabled (requested volume size: {{ .Values.bitcoinCashNodeTestnet.volumeSize }}, image: {{ .Values.bitcoinCashNodeTestnet.image | default .Values.bitcoinCashNode.image }})
 {{ else -}}
-  Bitcoin Cash Node (testnet): disabled
+  Bitcoin Cash Node (testnet4): disabled
+{{ end -}}
+{{ if .Values.bitcoinCashNodeChipnet.enable -}}
+  Bitcoin Cash Node (chipnet):  enabled (requested volume size: {{ .Values.bitcoinCashNodeChipnet.volumeSize }}, image: {{ .Values.bitcoinCashNodeChipnet.image | default .Values.bitcoinCashNode.image }})
+{{ else -}}
+  Bitcoin Cash Node (chipnet):  disabled
 {{ end }}
 {{- if .Values.postgres.externalDbUrl }}
 --- External Postgres Database ---

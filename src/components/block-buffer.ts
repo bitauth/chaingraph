@@ -1,4 +1,4 @@
-import type { ChaingraphBlock } from '../types/chaingraph';
+import type { ChaingraphBlock } from '../types/chaingraph.js';
 
 export class BlockBuffer {
   targetSizeBytes: number;

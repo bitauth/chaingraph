@@ -4,15 +4,14 @@
  */
 import { readFileSync } from 'fs';
 import { cpus, freemem, homedir } from 'os';
-import { join, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
+import { fileURLToPath } from 'url';
 
 import { binToHex, hexToBin, isHex } from '@bitauth/libauth';
 import dotenv from 'dotenv';
 
-import { version } from '../package.json';
-
-import { bitcoreBlockToChaingraphBlock, messages } from './bitcore';
-import type { ChaingraphBlock } from './types/chaingraph';
+import { bitcoreBlockToChaingraphBlock, messages } from './bitcore.js';
+import type { ChaingraphBlock } from './types/chaingraph.js';
 
 const dotEnvConfig = dotenv.config();
 if (dotEnvConfig.parsed === undefined) {
@@ -21,7 +20,9 @@ if (dotEnvConfig.parsed === undefined) {
   throw error;
 }
 const defaults = dotenv.parse(
-  readFileSync(resolve(__filename, '../../defaults.env'))
+  readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), '../defaults.env')
+  )
 );
 
 const configuration = {
@@ -35,9 +36,10 @@ const configuration = {
 const expectedOptions = [
   'CHAINGRAPH_BLOCK_BUFFER_TARGET_SIZE_MB',
   'CHAINGRAPH_GENESIS_BLOCKS',
-  'CHAINGRAPH_HEALTH_CHECK_PORT',
+  'CHAINGRAPH_INTERNAL_API_PORT',
   'CHAINGRAPH_LOG_FIREHOSE',
   'CHAINGRAPH_LOG_LEVEL_STDOUT',
+  'CHAINGRAPH_LOG_LEVEL_PATH',
   'CHAINGRAPH_LOG_PATH',
   'CHAINGRAPH_POSTGRES_CONNECTION_STRING',
   'CHAINGRAPH_POSTGRES_MAX_CONNECTIONS',
@@ -49,7 +51,7 @@ const expectedOptions = [
 const requireStringValues = (
   conf: { [x: string]: string | undefined },
   keys: typeof expectedOptions
-): conf is { [key in typeof expectedOptions[number]]: string } => {
+): conf is { [key in (typeof expectedOptions)[number]]: string } => {
   const missing = keys.find((key) => typeof conf[key] !== 'string');
   if (missing !== undefined) {
     // eslint-disable-next-line no-console
@@ -114,16 +116,22 @@ const extendTildeAndResolvePath = (path: string) =>
   path.startsWith('~')
     ? resolve(join(homedir(), path.slice(1)))
     : resolve(path);
+
+const logPathResolved = extendTildeAndResolvePath(
+  configuration.CHAINGRAPH_LOG_PATH.endsWith('.ndjson')
+    ? configuration.CHAINGRAPH_LOG_PATH
+    : `${configuration.CHAINGRAPH_LOG_PATH}/log_${new Date()
+        .toISOString()
+        .replace(/[-:.]/gu, '_')}.ndjson`
+);
 const disabled = 'false';
 /**
  * Set via the `CHAINGRAPH_LOG_PATH` environment variable. The tilde character
- * (`~`) is expanded via `os.homedir()`, and all paths are `path.resolve()`ed. A
+ * (`~`) is expanded via `os.homedir()`, and all paths are `path.resolve()`ed. If the path does not end in `.ndjson`, a new file will be created at the path (i.e. `log_${timestamp}.ndjson`) A
  * value of `false` disables logging to files.
  */
 const chaingraphLogPath =
-  configuration.CHAINGRAPH_LOG_PATH === disabled
-    ? false
-    : extendTildeAndResolvePath(configuration.CHAINGRAPH_LOG_PATH);
+  configuration.CHAINGRAPH_LOG_PATH === disabled ? false : logPathResolved;
 
 const allowedLevels = [
   'trace',
@@ -135,8 +143,8 @@ const allowedLevels = [
 ] as const;
 const isValidLoggingLevel = (
   level: string
-): level is typeof allowedLevels[number] =>
-  allowedLevels.includes(level as unknown as typeof allowedLevels[number]);
+): level is (typeof allowedLevels)[number] =>
+  allowedLevels.includes(level as unknown as (typeof allowedLevels)[number]);
 
 if (!isValidLoggingLevel(configuration.CHAINGRAPH_LOG_LEVEL_STDOUT)) {
   // eslint-disable-next-line functional/no-throw-statement
@@ -146,10 +154,23 @@ if (!isValidLoggingLevel(configuration.CHAINGRAPH_LOG_LEVEL_STDOUT)) {
     }. Must be one of the following: ${allowedLevels.join(', ')}`
   );
 }
+if (!isValidLoggingLevel(configuration.CHAINGRAPH_LOG_LEVEL_PATH)) {
+  // eslint-disable-next-line functional/no-throw-statement
+  throw new Error(
+    `Invalid level provided in the 'CHAINGRAPH_LOG_LEVEL_PATH' environment variable: ${
+      configuration.CHAINGRAPH_LOG_LEVEL_PATH
+    }. Must be one of the following: ${allowedLevels.join(', ')}`
+  );
+}
 /**
  * Set via the `CHAINGRAPH_LOG_LEVEL_STDOUT` environment variable.
  */
 const chaingraphLogLevelStdout = configuration.CHAINGRAPH_LOG_LEVEL_STDOUT;
+
+/**
+ * Set via the `CHAINGRAPH_LOG_LEVEL_PATH` environment variable.
+ */
+const chaingraphLogLevelPath = configuration.CHAINGRAPH_LOG_LEVEL_PATH;
 
 if (
   configuration.CHAINGRAPH_LOG_FIREHOSE.toLowerCase() !== 'true' &&
@@ -186,7 +207,7 @@ const validateNetworkMagic = (input: string) => {
   const magicBytes =
     input === 'mainnet'
       ? networkMagicBchMainnet
-      : input === 'testnet' || input === 'testnet4'
+      : input === 'testnet' || input === 'testnet4' || input === 'chipnet'
       ? networkMagicBchTestnet4
       : input === 'testnet3'
       ? networkMagicBchTestnet3
@@ -215,21 +236,21 @@ const genesisBlocks = configuration.CHAINGRAPH_GENESIS_BLOCKS.split(
   [networkMagicHex: string]: ChaingraphBlock;
 }>((all, entry) => {
   const [networkMagicHex, hex] = entry.split(':');
-  if (networkMagicHex.length !== networkMagicHexLength) {
+  if (networkMagicHex!.length !== networkMagicHexLength) {
     // eslint-disable-next-line functional/no-throw-statement
     throw new Error(
       `Improperly formatted 'CHAINGRAPH_GENESIS_BLOCKS' environment variable.
 
 Expected format: NETWORK_MAGIC:RAW_GENESIS_BLOCK_HEX,NETWORK_MAGIC:RAW_GENESIS_BLOCK_HEX,...
-E.g.: ${defaults.CHAINGRAPH_GENESIS_BLOCKS}
+E.g.: ${defaults.CHAINGRAPH_GENESIS_BLOCKS!}
 
 Invalid segment: ${entry}`
     );
   }
   return {
     ...all,
-    [networkMagicHex]: bitcoreBlockToChaingraphBlock(
-      messages.Block.fromBuffer(Buffer.from(hexToBin(hex))).block,
+    [networkMagicHex!]: bitcoreBlockToChaingraphBlock(
+      messages.Block.fromBuffer(Buffer.from(hexToBin(hex!))).block,
       0
     ),
   };
@@ -248,14 +269,14 @@ const trustedNodes = configuration.CHAINGRAPH_TRUSTED_NODES.split(',').map(
     const parts = node.split(':');
     const expectedParts = 4;
     const [name, host, portString, networkMagic] = parts;
-    const networkMagicHex = validateNetworkMagic(networkMagic);
+    const networkMagicHex = validateNetworkMagic(networkMagic!);
     if (!Object.keys(genesisBlocks).includes(networkMagicHex)) {
       // eslint-disable-next-line functional/no-throw-statement
       throw new Error(
         `The 'CHAINGRAPH_TRUSTED_NODES' environment variable references a 'NETWORK' for which the genesis block is unknown: 0x${networkMagicHex}. Please provide the missing genesis block using the 'CHAINGRAPH_GENESIS_BLOCKS' environment variable.`
       );
     }
-    const port = parseInt(portString, 10);
+    const port = parseInt(portString!, 10);
     if (
       parts.length !== expectedParts ||
       parts.every((part) => typeof part !== 'string') ||
@@ -275,12 +296,12 @@ Invalid segment: ${node}`
       /**
        * The IP address of this trusted node.
        */
-      host,
+      host: host!,
       /**
        * The name of this trusted node – used as a stable identifier between
        * restarts.
        */
-      name,
+      name: name!,
       /**
        * The "network magic" expected by this node's P2P network interface.
        */
@@ -294,14 +315,14 @@ Invalid segment: ${node}`
 );
 
 /**
- * Set via the `CHAINGRAPH_HEALTH_CHECK_PORT` environment variable.
+ * Set via the `CHAINGRAPH_INTERNAL_API_PORT` environment variable.
  */
-const chaingraphHealthCheckPort = Number(
-  configuration.CHAINGRAPH_HEALTH_CHECK_PORT
+const chaingraphInternalApiPort = Number(
+  configuration.CHAINGRAPH_INTERNAL_API_PORT
 );
-if (isNaN(chaingraphHealthCheckPort)) {
+if (isNaN(chaingraphInternalApiPort)) {
   // eslint-disable-next-line functional/no-throw-statement
-  throw new Error('CHAINGRAPH_HEALTH_CHECK_PORT must be a number.');
+  throw new Error('CHAINGRAPH_INTERNAL_API_PORT must be a number.');
 }
 
 /**
@@ -310,7 +331,7 @@ if (isNaN(chaingraphHealthCheckPort)) {
  */
 const chaingraphUserAgent =
   configuration.CHAINGRAPH_USER_AGENT === ''
-    ? `/chaingraph:${version}/`
+    ? `/chaingraph/`
     : configuration.CHAINGRAPH_USER_AGENT;
 
 /**
@@ -326,10 +347,11 @@ const isProduction = configuration.NODE_ENV === 'production';
 
 export {
   blockBufferTargetSizeMb,
-  chaingraphHealthCheckPort,
+  chaingraphInternalApiPort,
   chaingraphLogFirehose,
   chaingraphLogPath,
   chaingraphLogLevelStdout,
+  chaingraphLogLevelPath,
   chaingraphUserAgent,
   genesisBlocks,
   postgresMaxConnections,
