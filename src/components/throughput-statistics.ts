@@ -104,10 +104,12 @@ export class ThroughputStatistics<Metrics extends { [type: string]: number }> {
     metrics: Metrics;
   }) {
     if (durationMs < 1) {
-      instances.logger!.warn(
-        { durationMs, metrics, startTime },
-        'Statistic duration bug: attempted to add a statistic with a duration less than 1.'
-      );
+      if (instances.logger) {
+        instances.logger.warn(
+          { durationMs, metrics, startTime },
+          'Statistic duration bug: attempted to add a statistic with a duration less than 1.'
+        );
+      }
       return;
     }
     this.statistics.push({ durationMs, metrics, startTime });

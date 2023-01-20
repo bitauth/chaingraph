@@ -8,7 +8,7 @@ RUN set -ex \
   && rm -rf /var/lib/apt/lists/*
 
 ENV BITCOIN_VERSION 26.0.0
-ENV BITCOIN_URL https://github.com/bitcoin-cash-node/bitcoin-cash-node/releases/download/v25.0.0/bitcoin-cash-node-26.0.0-x86_64-linux-gnu.tar.gz
+ENV BITCOIN_URL https://github.com/bitcoin-cash-node/bitcoin-cash-node/releases/download/v26.0.0/bitcoin-cash-node-26.0.0-x86_64-linux-gnu.tar.gz
 ENV BITCOIN_SHA256 e32e05fd63161f6f1fe717fca789448d2ee48e2017d3d4c6686b4222fe69497e
 
 # install bitcoin binaries

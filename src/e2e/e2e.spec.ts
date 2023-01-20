@@ -478,7 +478,7 @@ const clearStdoutBuffer = () => {
 };
 
 test.serial('[e2e] spawn chaingraph', async (t) => {
-  chaingraphProcess = execa('node', ['./bin/chaingraph'], {
+  chaingraphProcess = execa('node', ['./bin/chaingraph.js'], {
     env: e2eEnvVariables,
     stdio: 'pipe',
   });
@@ -533,7 +533,7 @@ test.serial(
     // chaingraphProcess!.kill('SIGTERM');
     await waitForStdout('Shutting down...');
     await waitForStdout('Exiting...');
-    chaingraphProcess2 = execa('node', ['./bin/chaingraph'], {
+    chaingraphProcess2 = execa('node', ['./bin/chaingraph.js'], {
       env: e2eEnvVariables,
       stdio: 'pipe',
     });
@@ -1031,7 +1031,7 @@ test.serial('[e2e] shuts down with SIGINT', async (t) => {
 test.serial(
   '[e2e] restores sync-state from database on restart (after initial sync)',
   async (t) => {
-    chaingraphProcess3 = execa('node', ['./bin/chaingraph'], {
+    chaingraphProcess3 = execa('node', ['./bin/chaingraph.js'], {
       env: e2eEnvVariables2,
       stdio: 'pipe',
     });

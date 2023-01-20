@@ -39,7 +39,7 @@ test('computeIndexCreationProgress: single index, phase: "building index: sortin
       tuples_total: '816150325',
     },
   ]);
-  t.deepEqual(result, [['spent_by_index', '4*']]);
+  t.deepEqual(result, [['spent_by_index', '40']]);
 });
 
 test('computeIndexCreationProgress: single index, phase: "building index: loading tuples in tree" 70%', async (t) => {

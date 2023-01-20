@@ -89,7 +89,7 @@ const transactionCacheSize = 100_000;
 
 export const cancelableDelay = (ms: number) => {
   // eslint-disable-next-line functional/no-let, @typescript-eslint/init-declarations
-  let timeoutId: number;
+  let timeoutId: NodeJS.Timeout;
   const promise = new Promise<void>((resolve) => {
     timeoutId = setTimeout(resolve, ms);
   });
