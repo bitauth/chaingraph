@@ -18,7 +18,6 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
-
     steps:
       - name: Check out repository code
         uses: actions/checkout@v3
@@ -28,7 +27,7 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: '18'
-      - run: yarn install --immutable --immutable-cache --check-cache
+      - run: yarn install --immutable --immutable-cache
       - run: yarn test
       - run: yarn cov:lcov
       - name: Upload test coverage
@@ -41,3 +40,16 @@ jobs:
         with:
           name: e2e-test-log
           path: data/chaingraph/log-e2e.ndjson
+
+  check-yarn-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+        with:
+          submodules: 'true'
+      - name: Install Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - run: yarn install --immutable --immutable-cache --check-cache

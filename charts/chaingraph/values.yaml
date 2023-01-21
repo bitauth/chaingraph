@@ -8,7 +8,7 @@ agent:
   # Manage the Chaingraph agent from this chart.
   enable: true
   # The precise Chaingraph Agent Docker image to use.
-  image: chaingraph/agent@sha256:6df5c4f93511e6734aa502260ca236a113fe366b220eb433ccfaec79ee3c6ab2 # e9c37a6
+  image: chaingraph/agent@sha256:529ed271617ae9089736555e337dfa07a813bf25d1437ee3dc9d9242fa2ea65e # a0d2b2c
   # A list of trusted external nodes to which this Chaingraph instance should connect. If specified, this list will be appended to the list of trusted nodes which are managed by this Chaingraph chart.
   # This must be specified using the same format as `CHAINGRAPH_TRUSTED_NODES`, e.g. `bchn:127.0.0.1:8333:mainnet,bchd:127.0.0.1:8334:testnet,another:127.0.0.1:8335:e3e1f3e8`
   externalNodes: ''
@@ -38,7 +38,7 @@ bitcoinCashNode:
   # Enable a local Bitcoin Cash Node.
   enable: false
   # The precise Bitcoin Cash Node Docker image to use.
-  image: chaingraph/bitcoin-cash-node@sha256:128b0219ea9f6b26a9688adabd792a859c628ff8571cc2740e7fb6295c442b99 # v25.0.0
+  image: chaingraph/bitcoin-cash-node@sha256:133f1ac65126e2637ee544e1190a293c880f035f18042c25e2f1369be30f57b8 # v26.0.0
   # The size of the volume to provision for Bitcoin Cash Node.
   volumeSize:  210Gi
 
@@ -95,7 +95,7 @@ hasura:
   # Enable a local Hasura deployment. Disable this to either manage Hasura manually or use Hasura Cloud.
   enable: true
   # The precise Hasura Docker image to use.
-  image: chaingraph/hasura@sha256:eadb66a65677b872aad06266e4eddd307a89069cba455c3e0ed6bcb176eccf64 # 8757ea1
+  image: chaingraph/hasura@sha256:12380cc4e8845e5e48f69141e379d971e4282682894d4f579b21a3b0eb5d4687 # 3ebddce
   # A secret key used to secure admin access in Hasura. If not provided, a random secret will be generated and stored in the cluster.
   adminSecretKey: ''
   # Enable the console served by Hasura. (Not recommended; use Hasura CLI's `hasura console` instead.)
