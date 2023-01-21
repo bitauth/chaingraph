@@ -113,7 +113,7 @@
     "log:info": "yarn log --minimumLevel info",
     "log:warn": "yarn log --minimumLevel warn",
     "log:prod-sim:trace": "tail -f data/agent/log.ndjson | pino-pretty -c -l -t 'UTC:yyyy-mm-dd HH:MM:ss.l Z' -i hostname",
-    "log:prod-sim:debug": "tail -f data/agent/log.ndjson | pino-pretty -c -l -t 'UTC:yyyy-mm-dd HH:MM:ss.l Z' -i hostname --search 'level >= `20`'",
+    "log:prod-sim:debug": "tail -f data/agent/log.ndjson | pino-pretty -c -l -t 'UTC:yyyy-mm-dd HH:MM:ss.l Z' -i hostname --minimumLevel debug",
     "fix": "run-s fix:*",
     "fix:prettier": "prettier \"src/**/*.ts\" --write",
     "fix:lint": "eslint src --ext .ts --fix",
