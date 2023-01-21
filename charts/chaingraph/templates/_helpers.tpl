@@ -52,13 +52,13 @@ ALTER SYSTEM SET max_parallel_maintenance_workers = '{{ max 1 (div .Values.postg
     {{- $trustedNodes = append $trustedNodes .Values.agent.externalNodes -}}
   {{- end -}}
   {{- if .Values.bitcoinCashNode.enable -}}
-    {{- $trustedNodes = append $trustedNodes (print "bchn:bitcoin-cash-node-service." .Release.Namespace ".svc.cluster.local:8333:mainnet") -}}
+    {{- $trustedNodes = append $trustedNodes (print "bchn-mainnet:bitcoin-cash-node-service." .Release.Namespace ".svc.cluster.local:8333:mainnet") -}}
   {{- end -}}
   {{- if .Values.bitcoinCashNodeTestnet.enable -}}
-    {{- $trustedNodes = append $trustedNodes (print "tbchn:bitcoin-cash-node-testnet-service." .Release.Namespace ".svc.cluster.local:28333:testnet") -}}
+    {{- $trustedNodes = append $trustedNodes (print "bchn-testnet:bitcoin-cash-node-testnet-service." .Release.Namespace ".svc.cluster.local:28333:testnet") -}}
   {{- end -}}
   {{- if .Values.bitcoinCashNodeChipnet.enable -}}
-    {{- $trustedNodes = append $trustedNodes (print "tbchn:bitcoin-cash-node-chipnet-service." .Release.Namespace ".svc.cluster.local:48333:chipnet") -}}
+    {{- $trustedNodes = append $trustedNodes (print "bchn-chipnet:bitcoin-cash-node-chipnet-service." .Release.Namespace ".svc.cluster.local:48333:chipnet") -}}
   {{- end -}}
   {{- $trustedNodes | join "," | trimPrefix "PLACEHOLDER," -}}
 {{- end }}
