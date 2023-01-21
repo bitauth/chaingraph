@@ -314,6 +314,28 @@ Invalid segment: ${node}`
   }
 );
 
+const nodeNames = trustedNodes.map((n) => n.name);
+const duplicateName = nodeNames.find(
+  (value, index, list) => index !== list.lastIndexOf(value)
+);
+if (duplicateName !== undefined) {
+  // eslint-disable-next-line functional/no-throw-statement
+  throw new Error(
+    `Multiple nodes in CHAINGRAPH_TRUSTED_NODES have been assigned the same name: ${duplicateName}`
+  );
+}
+
+const nodeHostAndPort = trustedNodes.map((n) => `${n.host}:${n.port}`);
+const duplicateHostAndPort = nodeHostAndPort.find(
+  (value, index, list) => index !== list.lastIndexOf(value)
+);
+if (duplicateHostAndPort !== undefined) {
+  // eslint-disable-next-line functional/no-throw-statement
+  throw new Error(
+    `Multiple nodes in CHAINGRAPH_TRUSTED_NODES have been assigned the same host and port: ${duplicateHostAndPort}`
+  );
+}
+
 /**
  * Set via the `CHAINGRAPH_INTERNAL_API_PORT` environment variable.
  */
