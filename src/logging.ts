@@ -68,27 +68,6 @@ export const instantiateLogger = () => {
     } mode at level '${chaingraphLogLevelStdout}'.`
   );
 
-  switch (chaingraphLogLevelStdout) {
-    case 'fatal':
-      logger.fatal(`Logging level set to: fatal`);
-      break;
-    case 'error':
-      logger.error(`Logging level set to: error`);
-      break;
-    case 'warn':
-      logger.warn(`Logging level set to: warn`);
-      break;
-    case 'info':
-      logger.info(`Logging level set to: info`);
-      break;
-    case 'debug':
-      logger.debug(`Logging level set to: debug`);
-      break;
-    case 'trace':
-      logger.trace(`Logging level set to: trace`);
-      break;
-  }
-
   if (chaingraphLogPath !== false) {
     logger.info(
       `Also logging at level '${chaingraphLogLevelPath}' to: ${chaingraphLogPath}`

@@ -9,7 +9,7 @@ metadata:
 spec:
   ports:
     - name: chipnet-p2p
-      port: 28333
+      port: 48333
   type: ClusterIP
   selector:
     app: bitcoin-cash-node-chipnet

@@ -288,6 +288,13 @@ export class Agent {
 
   scheduledBlockBufferFill = false;
 
+  /**
+   * The next second after which to log another warning that one or more nodes
+   * are unresponsive.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-magic-numbers
+  warnAfterDelaySecond = 5;
+
   syncedAtLastFillAttempt = false;
 
   /**
@@ -701,6 +708,7 @@ export class Agent {
    * noticed, and avoids wasting cluster bandwidth when a node configuration
    * issue requires that Chaingraph be restarted.
    */
+
   checkInitialization() {
     const uninitializedNodes = Object.entries(this.nodes).reduce<string[]>(
       (nodes, [id, node]) =>
@@ -708,22 +716,20 @@ export class Agent {
       []
     );
     if (uninitializedNodes.length > 0 || !this.blockDbRestored) {
-      // warn if more than 5 seconds have passed since this.startTime
-      const warnAfterDelayMs = 5000;
       const second = 1000;
       const currentDelay = Date.now() - this.startTime.getTime();
-      if (currentDelay > warnAfterDelayMs) {
+      const currentDelaySecondsRounded = Math.round(currentDelay / second);
+      if (this.warnAfterDelaySecond < currentDelaySecondsRounded) {
+        this.warnAfterDelaySecond = currentDelaySecondsRounded;
         if (this.blockDbRestored) {
           this.logger.warn(
-            `The following nodes are taking longer than ${Math.round(
-              currentDelay / second
-            )} seconds to initialize and may be misconfigured: ${uninitializedNodes.join(
+            `The following nodes are taking longer than ${currentDelaySecondsRounded} seconds to initialize and may be either misconfigured or unresponsive: ${uninitializedNodes.join(
               ','
             )}`
           );
         } else {
           this.logger.warn(
-            `Could not restore block hashes from the database within 5 seconds. There may be a database configuration or connectivity problem.`
+            `Could not restore block hashes from the database after ${currentDelaySecondsRounded} seconds. There may be a database configuration or connectivity problem.`
           );
         }
       }
