@@ -4,6 +4,8 @@ actions:
       kind: synchronous
       handler: '{{WEBHOOK_HANDLER_BASE_URL}}/send-transaction'
       timeout: 3
+    permissions:
+      - role: public
     comment: Send an encoded transaction to the requested node for broadcast to the network.
 custom_types:
   enums: []

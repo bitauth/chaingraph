@@ -30,6 +30,10 @@ select_permissions:
         - output_index
         - value_satoshis
         - locking_bytecode
+        - token_category
+        - fungible_token_amount
+        - nonfungible_token_capability
+        - nonfungible_token_commitment
       computed_fields:
         - locking_bytecode_pattern
       filter: {}
