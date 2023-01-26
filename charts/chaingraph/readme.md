@@ -21,7 +21,7 @@ Chaingraph currently supports internal management of mainnet and testnet BCHN no
 A [BCHN](https://bitcoincashnode.org/) node configured to connect to `mainnet` is disabled by default. It can be enabled with the following option:
 
 ```sh
---set bitcoinCashNode.enable=true # --set postgres.volumeSize=625Gi
+--set bitcoinCashNode.enable=true # --set postgres.volumeSize=730Gi
 ```
 
 When enabling mainnet, ensure the volume assigned to Postgres is large enough to hold the database with additional space for indexing (see [Approximate Space Usage](../../docs/schema.md#approximate-space-usage)). If using the internally-managed Postgres instance, this can be configured with the `postgres.volumeSize` value. (See also: [Expanding Volumes](#expanding-volumes).)
@@ -158,7 +158,7 @@ spec:
   - ReadWriteOnce
   resources:
     requests:
-      storage: 625Gi # <- edit this value
+      storage: 730Gi # <- edit this value
 ```
 
 If the specified volume size is larger than the existing volumes, the volumes will be automatically expanded by supporting Kubernetes systems. (Note: volume sizes cannot be reduced using this method.)

@@ -23,10 +23,10 @@ To deploy Chaingraph locally, see the instructions in the [Contributing Guide](.
 
 ### Create a Cluster
 
-As of late 2021, DigitalOcean is the most cost-effective cloud provider for Chaingraph deployments (differentiated primarily by pricing of egress bandwidth and persistent volume SSD storage).
+As of 2023, DigitalOcean is the most cost-effective cloud provider for Chaingraph deployments (differentiated primarily by pricing of egress bandwidth and persistent volume SSD storage).
 
-To set up a new cluster, **consider using [Chaingraph's referral code for a $100
-credit](https://m.do.co/c/522a68c96ba3)** (supports `demo.chaingraph.cash`); this should cover a production-ready BCH mainnet deployment for ~30 days (approximately $85/month for SSD storage, one $10/month droplet, and $10/month for the load balancer and egress bandwidth).
+To set up a new cluster, **consider using [Chaingraph's referral code for a $200
+credit](https://m.do.co/c/cb25573fbfe7)** (supports `demo.chaingraph.cash`); this should cover a basic, production-ready BCH mainnet deployment for ~60 days (approximately $85/month for SSD storage, one $12/month droplet, and $12/month for the load balancer and egress bandwidth).
 
 Whichever cloud provider you choose, for the below testnet deployment, provision at least 1 Kubernetes node of the least expensive type.
 
@@ -44,7 +44,7 @@ If you have previously added the `bitauth` repo, run `helm repo update` to fetch
 
 ### Deploy a Release
 
-Using the default configuration, Chaingraph will be installed with a single `testnet4` [BCHN](https://gitlab.com/bitcoin-cash-node/bitcoin-cash-node) full node, an internally-managed Postgres instance, and no load balancer.
+Using the default configuration, Chaingraph will be installed with one `chipnet` and one `testnet4` [BCHN](https://gitlab.com/bitcoin-cash-node/bitcoin-cash-node) full node, an internally-managed Postgres instance, and no load balancer.
 
 This is an ideal configuration for experimenting with Chaingraph, as it can be deployed on very low-powered clusters (often even within the free tier provided by many cloud Kubernetes providers). See the [chart readme](./charts/chaingraph/readme.md) for information about other options.
 

@@ -51,31 +51,31 @@ Multi-node, multi-chain deployments share common history, so only divergent bloc
 
 This section is periodically updated to provide approximate storage usage information for all default tables and indexes. Actual storage usage will be affected by file system compression and Postgres vacuuming progress. (Vacuuming frees wasted space in the database, so storage usage will fall in the hours/days after initial sync as the database reclaims unused space. The Postgres `VACUUM FULL` command locks the table and performs this compression immediately.)
 
-The below table is derived from the [`/space` view in `pgHero`](../.github/CONTRIBUTING.md#using-pghero) on a recently-vacuumed Chaingraph Postgres database synced with only a single, mainnet BCH node.
+The below table is derived from the [`/space` view in `pgHero`](../.github/CONTRIBUTING.md#using-pghero) on a recently-synced Chaingraph Postgres database with a single, mainnet BCH node.
 
-_**Last Update**: 2021-11-11_
+_**Last Update**: 2023-01-23_
 
 | Relation                      | Size               |
 | ----------------------------- | ------------------ |
-| input                         | 176 GB             |
-| output                        | 100 GB             |
-| output_pkey                   | 78.3 GB            |
-| spent_by_index                | 52 GB              |
-| transaction                   | 35.3 GB            |
-| input_pkey                    | 32.2 GB            |
-| transaction_hash_key          | 24.8 GB            |
-| output_search_index           | 19.7 GB            |
-| block_transaction             | 16.9 GB            |
-| block_transaction_pkey        | 10.9 GB            |
-| block_inclusions_index        | 7.26 GB            |
-| transaction_pkey              | 7.25 GB            |
-| block                         | 131 MB             |
-| block_hash_key                | 52.9 MB            |
-| node_block                    | 33.5 MB            |
-| node_block_pkey               | 21.5 MB            |
-| block_height_index            | 15.3 MB            |
-| block_internal_id_key         | 15.3 MB            |
-| block_pkey                    | 15.3 MB            |
+| input                         | 189 GB             |
+| output                        | 108 GB             |
+| output_pkey                   | 84.2 GB            |
+| spent_by_index                | 56.3 GB            |
+| transaction                   | 37.2 GB            |
+| input_pkey                    | 33.6 GB            |
+| transaction_hash_key          | 26.1 GB            |
+| output_search_index           | 20.7 GB            |
+| block_transaction             | 17.8 GB            |
+| block_transaction_pkey        | 11.5 GB            |
+| block_inclusions_index        | 7.64 GB            |
+| transaction_pkey              | 7.64 GB            |
+| block                         | 168 MB             |
+| block_hash_key                | 67.9 MB            |
+| node_block                    | 44.2 MB            |
+| node_block_pkey               | 32.1 MB            |
+| block_internal_id_key         | 19.9 MB            |
+| block_pkey                    | 19.9 MB            |
+| block_height_index            | 19.1 MB            |
 | node                          | 16 KB              |
 | node_internal_id_key          | 16 KB              |
 | node_name_key                 | 16 KB              |
@@ -87,9 +87,9 @@ _**Last Update**: 2021-11-11_
 | node_block_history            | varies<sup>3</sup> |
 | node_block_history_pkey       | varies<sup>3</sup> |
 
-- Average Transactions Per Day (Jan - Nov 2021): **~168,000 transactions/day**
-- Average Transaction Size (Jan - Nov 2021): **439 bytes**
-- Average Transaction Throughput Per Day (Jan - Nov 2021): **~74 MB**
+- Average Transactions Per Day (Jan 2023): **~12,000 transactions/day**
+- Average Transaction Size (Jan 2023): **838 bytes**
+- Average Transaction Throughput Per Day (Jan 2023): **~10 MB**
 
 <details><summary>SQL</summary>
 
