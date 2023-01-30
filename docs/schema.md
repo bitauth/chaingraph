@@ -18,10 +18,10 @@ The diagram below illustrates the data model used by Chaingraph's Postgres datab
 
 For detailed descriptions of each table, field, default indexes, and Postgres function, review the comments in the [SQL migration files](../images/hasura/hasura-data/migrations/default). Post-sync required indexes can be found in [`indexDefinitions`](../src/components/db-utils.ts).
 
-<!-- Generated using `yarn gen:schemaspy` on a database synced to mainnet -->
+<!-- Generated using `yarn gen:schemaspy` -->
 
 <p align="center"><img width="600" src="./schema.png" /></p>
-<p align="center">Generated Nov. 2021 with <code>yarn gen:schemaspy</code> on a mainnet database.</p>
+<p align="center">Generated Jan. 2023 with <code>yarn gen:schemaspy</code> on a database synced with <code>mainnet</code>, <code>testnet</code>, and <code>chipnet</code>.</p>
 
 ## Mutability
 

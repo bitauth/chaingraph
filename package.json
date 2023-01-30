@@ -56,6 +56,8 @@
     "dev-cluster:spin-up:bchn:chipnet": "kubectl scale statefulsets bitcoin-cash-node-chipnet --replicas=1",
     "dev-cluster:spin-down:hasura": "kubectl scale deployment hasura --replicas=0",
     "dev-cluster:spin-up:hasura": "kubectl scale deployment hasura --replicas=1",
+    "dev-cluster:spin-down:agent": "kubectl scale deployment chaingraph-agent --replicas=0",
+    "dev-cluster:spin-up:agent": "kubectl scale deployment chaingraph-agent --replicas=1",
     "dev-cluster:spin-down:postgres": "kubectl scale statefulsets postgres --replicas=0",
     "dev-cluster:spin-up:postgres": "kubectl scale statefulsets postgres --replicas=1",
     "dev-cluster:spin-down:pgadmin": "kubectl scale statefulsets pgadmin --replicas=0",
