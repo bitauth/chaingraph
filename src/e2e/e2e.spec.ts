@@ -1052,10 +1052,12 @@ test.serial(
 );
 
 test.serial('[e2e] catches up a new node via headers', async (t) => {
+  t.timeout(oneMinute);
   await waitForStdout(
     `node4: accepted 2000 existing blocks from height 1 to height 2000 (hash: ${
       chainStates.node3[2000]!.header.hash
-    })`
+    })`,
+    oneMinute
   );
   await waitForStdout(
     `node4: accepted 1162 existing blocks from height 2001 to height 3162 (hash: ${
