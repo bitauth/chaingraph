@@ -3,12 +3,12 @@ kind: Service
 metadata:
   name: agent-service
   labels:
-    app: agent
+    app: chaingraph-agent
     {{- include "chaingraph.labels" . | nindent 4 }}
 spec:
   ports:
-    - name: api
+    - name: internal-api
       port: {{ .Values.agent.port }}
   type: ClusterIP
   selector:
-    app: agent
+    app: chaingraph-agent
