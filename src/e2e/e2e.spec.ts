@@ -62,6 +62,7 @@ const migration = (path: string) =>
 const dbUpMigrationPaths = [
   migration('default/1616195337538_init/up.sql'),
   migration('default/1673124945608_tokens/up.sql'),
+  migration('default/1676794104752_parse_bytecode_pattern/up.sql'),
 ];
 
 const chaingraphInternalApiPort = '3201';
