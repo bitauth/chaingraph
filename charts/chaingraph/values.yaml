@@ -118,7 +118,7 @@ pgAdmin:
   # Enable a local pgAdmin installation. (This should only be used during development.)
   enable: false
   # The precise pgAdmin Docker image to use (only used if `pgAdmin.enable` is `true`).
-  image: dpage/pgadmin4@sha256:49aa611e99d306ba864a7211fad4b02ac31f59edeb2e93aeb4bed032429a27cc #v6.18
+  image: dpage/pgadmin4@sha256:2efd6d20c528e939f28257bdb0160b3907a677151199a11a4e72c9704697ab70 #v6.20
   # The size of the volume to provision for pgAdmin (only used if `pgAdmin.enable` is `true`).
   volumeSize: 10Gi
   # The admin email/username used to log in to pgAdmin
