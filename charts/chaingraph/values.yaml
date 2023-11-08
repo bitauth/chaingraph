@@ -105,8 +105,10 @@ hasura:
   overrideDbUrl: ''
   # An alternative Postgres database URL in which Hasura metadata should be stored. If not set, metadata will be stored in the configured Postgres database.
   metadataDbUrl: ''
+  # Configure the port of the Hasura service. Defaults to 80.
+  servicePort: 80
   # Configure a load balancer to serve the GraphQL API at port 80. Disabled by default because most cloud providers charge a monthly price for load balancer usage, and Chaingraph can be tested or used for development without load balancing.
-  # Note: it is recommended that this be enabled for production usage if Hasura is being managed internally by Chaingraph.
+  # NOTE: it is recommended that this be enabled for production usage if Hasura is being managed internally by Chaingraph and another load balancer is not configured.
   useLoadBalancer: false
   # Enable enforcement of the configured allow-list. While this is disabled for simplicity during development, it is important for hardening production APIs against maliciously expensive queries.
   enableAllowList: false
