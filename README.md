@@ -99,6 +99,22 @@ Mainnet Chaingraph deployments may take 10 hours or more to sync fully and build
 
 To continue exploring the Chaingraph API, check out the example queries on [**chaingraph.cash**](https://chaingraph.cash).
 
+### Upgrade Chaingraph
+
+These instructions upgrade the `my-chaingraph` cluster created in the [Quick Start](#quick-start) to the latest version of Chaingraph:
+
+```sh
+helm repo update # Pull the latest bitauth/chaingraph helm chart
+helm get values my-chaingraph -o yaml > my-values.yaml
+helm upgrade my-chaingraph bitauth/chaingraph --reset-values --values my-values.yaml
+```
+
+As a best practice, consider preserving the `my-values.yaml` file for future reference. You can also preserve the latest deployment status and notes at any time:
+
+```sh
+helm status my-chaingraph > status.txt
+```
+
 ## Architecture
 
 Chaingraph is a Kubernetes application which manages a stack of open source software including one or more Bitcoin Cash full nodes, a syncing agent, a Postgres SQL database, and a Hasura instance.

@@ -182,6 +182,7 @@ If this installation is intended for production use, an allow-list is recommende
 :                             |___/          |_|             :
 :............................................................:
 
-Chaingraph version {{ .Chart.Version }} was installed successfully 🚀
+Chaingraph version {{ .Chart.Version }} was {{ if .Release.IsUpgrade }}upgraded{{ else }}installed{{ end }} successfully 🚀
 
-Above are some notes about your configuration. You may want to copy and save these notes for future reference.
+Above are some notes about your configuration. Consider printing them to a file for future reference:
+$ helm status {{ .Release.Name }} > notes-{{ .Release.Name }}.txt
