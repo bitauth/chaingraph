@@ -31,7 +31,7 @@ COMMENT ON COLUMN block.version IS 'The "version" field of this block; a 4-byte 
 COMMENT ON COLUMN block.timestamp IS 'The uint32 current Unix timestamp claimed by the miner at the time this block was mined. By consensus, block timestamps must be within ~2 hours of the actual time, but timestamps are not guaranteed to be accurate. Timestamps of later blocks can also be earlier than their parent blocks.';
 COMMENT ON COLUMN block.hash IS 'The 32-byte, double-sha256 hash of the block header (encoded using the standard P2P network format) in big-endian byte order. This is used as a universal, unique identifier for the block. Big-endian byte order is typically seen in block explorers and user interfaces (as opposed to little-endian byte order, which is used in standard P2P network messages).';
 COMMENT ON COLUMN block.previous_block_hash IS 'The 32-byte, double-sha256 hash of the previous block''s header in big-endian byte order. This is the byte order typically seen in block explorers and user interfaces (as opposed to little-endian byte order, which is used in standard P2P network messages).';
-COMMENT ON COLUMN block.merkle_root IS 'The 32-byte root hash of the double-sha256 merkle tree of transactions confirmed by this block. Note, the unusual merkle tree construction used by most chains is vulnerable to CVE-2012-2459. The final node in oddly-numbered levels is duplicated, and special care is required to ensure trees contain minimal duplicatation.';
+COMMENT ON COLUMN block.merkle_root IS 'The 32-byte root hash of the double-sha256 merkle tree of transactions confirmed by this block. Note, the unusual merkle tree construction used by most chains is vulnerable to CVE-2012-2459. The final node in oddly-numbered levels is duplicated, and special care is required to ensure trees contain minimal duplication.';
 COMMENT ON COLUMN block.bits IS 'The uint32 packed representation of the difficulty target being used for this block. To be valid, the block hash value must be less than this difficulty target.';
 COMMENT ON COLUMN block.nonce IS 'The uint32 nonce used for this block. This field allows miners to introduce entropy into the block header, changing the resulting hash during mining.';
 COMMENT ON COLUMN block.size_bytes IS 'The network-encoded size of this block in bytes including transactions.';
@@ -59,7 +59,7 @@ ALTER TABLE ONLY transaction
 COMMENT ON TABLE transaction IS 'A transaction.';
 COMMENT ON COLUMN transaction.internal_id IS 'A unique, int64 identifier for this transaction assigned by Chaingraph. This value is not guaranteed to be consistent between Chaingraph instances.';
 COMMENT ON COLUMN transaction.hash IS 'The 32-byte, double-sha256 hash of this transaction (encoded using the standard P2P network format) in big-endian byte order. This is the byte order typically seen in block explorers and user interfaces (as opposed to little-endian byte order, which is used in standard P2P network messages).';
-COMMENT ON COLUMN transaction.version IS 'The version of this transaction. In the v1 and v2 transaction formats, a 4-byte field typically represented as an int32. (Verson 2 transactions are defined in BIP68.)';
+COMMENT ON COLUMN transaction.version IS 'The version of this transaction. In the v1 and v2 transaction formats, a 4-byte field typically represented as an int32. (Version 2 transactions are defined in BIP68.)';
 COMMENT ON COLUMN transaction.locktime IS 'The uint32 locktime at which this transaction is considered valid. Locktime can be provided as either a timestamp or a block height: values less than 500,000,000 are understood to be a block height (the current block number in the chain, beginning from block 0); values greater than or equal to 500,000,000 are understood to be a UNIX timestamp.';
 COMMENT ON COLUMN transaction.size_bytes IS 'The network-encoded size of this transaction in bytes.';
 COMMENT ON COLUMN transaction.is_coinbase IS 'A boolean value indicating whether this transaction is a coinbase transaction. A coinbase transaction must be the 0th transaction in a block, it must have one input which spends from the empty outpoint_transaction_hash (0x0000...) and – after BIP34 – includes the block''s height in its unlocking_bytecode (A.K.A. "coinbase" field), and it may spend the sum of the block''s transaction fees and block reward to its output(s).';
@@ -587,7 +587,7 @@ $$;
 COMMENT ON FUNCTION parse_bytecode_pattern_with_pushdata_lengths (bytea) IS 'Parse a sequence of bitcoin VM bytecode, extracting the first byte of each instruction and any pushdata length bytes (for OP_PUSHDATA_1, OP_PUSHDATA_2, and OP_PUSHDATA_4). The resulting pattern excludes the contents of pushed values such that similar bytecode sequences produce the same pattern, even if different data or public keys are used.';
 
 -- For performance, this function does not detect the otherwise valid (but useless) redeem bytecode of 'OP_1'.
--- Redeem bytecodes of 'OP_1' through 'OP_16' will always return NULL.
+-- Redeem bytecode values of 'OP_1' through 'OP_16' will always return NULL.
 CREATE FUNCTION parse_bytecode_pattern_redeem(bytecode bytea) RETURNS bytea
   LANGUAGE plpgsql IMMUTABLE
 AS $$
