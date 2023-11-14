@@ -7,9 +7,9 @@ RUN set -ex \
   && apt-get install -qq --no-install-recommends ca-certificates gosu wget \
   && rm -rf /var/lib/apt/lists/*
 
-ENV BITCOIN_VERSION 26.1.0
-ENV BITCOIN_URL https://github.com/bitcoin-cash-node/bitcoin-cash-node/releases/download/v26.1.0/bitcoin-cash-node-26.1.0-x86_64-linux-gnu.tar.gz
-ENV BITCOIN_SHA256 68cb24d57898d5b47a1162a9683d0b0e36c6701b5a16b93edc94bbd82113c04b
+ENV BITCOIN_VERSION 26.1.1
+ENV BITCOIN_URL https://download.bitcoincashnode.org/misc/builds/upgrade10_build_1/linux/bitcoin-cash-node-26.1.1-x86_64-linux-gnu.tar.gz
+ENV BITCOIN_SHA256 e00382a3f7402f168ba77e18a2fd6227c906a292e3534c6114396261848925c8
 
 # install bitcoin binaries
 RUN set -ex \
