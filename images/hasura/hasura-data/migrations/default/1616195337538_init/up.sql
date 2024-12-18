@@ -539,6 +539,13 @@ AS $$
 $$;
 COMMENT ON FUNCTION input_unlocking_bytecode_pattern (input) IS 'Extract the first byte of each instruction for the unlocking bytecode of an input. The resulting pattern excludes the contents of pushed values such that similar bytecode sequences produce the same pattern.';
 
+CREATE FUNCTION input_unlocking_bytecode_hex(input_row input) RETURNS text
+  LANGUAGE sql IMMUTABLE
+AS $$
+  SELECT encode($1.unlocking_bytecode, 'hex');
+$$;
+COMMENT ON FUNCTION input_unlocking_bytecode_hex (input) IS 'Transform input unlocking bytecode to hex string.';
+
 CREATE FUNCTION parse_bytecode_pattern_with_pushdata_lengths(bytecode bytea) RETURNS bytea
   LANGUAGE plpgsql IMMUTABLE
 AS $$
