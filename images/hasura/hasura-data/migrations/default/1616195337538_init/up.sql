@@ -635,6 +635,7 @@ BEGIN
   ELSE
     RETURN parse_bytecode_pattern(maybe_redeem);
   END IF;
+EXCEPTION WHEN OTHERS THEN RETURN NULL;
 END;
 $$;
 COMMENT ON FUNCTION parse_bytecode_pattern_redeem (bytea) IS 'Parse VM unlocking bytecode to identify the final instruction. If the last instruction is a push, attempt to parse its contents as P2SH redeem bytecode, extracting the first byte of each instruction into a bytecode pattern (excluding length bytes and pushed data). If the last instruction is not a push, return NULL.';
