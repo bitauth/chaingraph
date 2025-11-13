@@ -1,4 +1,4 @@
-FROM debian:buster-slim
+FROM debian:bookworm-slim
 
 RUN groupadd -r bitcoin && useradd -r -m -g bitcoin bitcoin
 
@@ -7,9 +7,9 @@ RUN set -ex \
   && apt-get install -qq --no-install-recommends ca-certificates gosu wget \
   && rm -rf /var/lib/apt/lists/*
 
-ENV BITCOIN_VERSION 27.1.1
-ENV BITCOIN_URL https://download.bitcoincashnode.org/misc/builds/upgrade11_temp/linux/bitcoin-cash-node-27.1.1-x86_64-linux-gnu.tar.gz
-ENV BITCOIN_SHA256 2a20111c97013e42f82e96691c438600cc30fe6c73b55df830265f1c7421a2f6
+ENV BITCOIN_VERSION 28.0.2
+ENV BITCOIN_URL https://download.bitcoincashnode.org/misc/builds/upgrade12_temp/linux/bitcoin-cash-node-28.0.2-x86_64-linux-gnu.tar.gz
+ENV BITCOIN_SHA256 140b44fd76a4f9428354bfbec4800d58fd39fb723320e761a035f15c2dd43596
 
 # install bitcoin binaries
 RUN set -ex \
