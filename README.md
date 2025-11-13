@@ -112,6 +112,7 @@ helm upgrade my-chaingraph bitauth/chaingraph --reset-values --values my-values.
 As a best practice, consider preserving the `my-values.yaml` file for future reference. You can also preserve the latest deployment status and notes at any time:
 
 ```sh
+helm list # show releases
 helm status my-chaingraph > status.txt
 ```
 
