@@ -1767,6 +1767,7 @@ export class Agent {
         this.logger.debug('PG pool cleared.');
         this.logger.info('Exiting...');
       });
+
     this.onShutdown();
     return this.shutdownPromise;
   }
