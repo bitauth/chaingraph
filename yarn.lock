@@ -303,9 +303,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@chaingraph/bitcore-lib-cash@npm:^9.0.4":
-  version: 9.0.4
-  resolution: "@chaingraph/bitcore-lib-cash@npm:9.0.4"
+"@chaingraph/bitcore-lib-cash@npm:^9.0.5":
+  version: 9.0.5
+  resolution: "@chaingraph/bitcore-lib-cash@npm:9.0.5"
   dependencies:
     bn.js: =4.11.8
     bs58: ^4.0.1
@@ -313,19 +313,19 @@ __metadata:
     elliptic: ^6.5.3
     inherits: =2.0.1
     lodash: ^4.17.20
-  checksum: f269e2392318fb3d975c84e2f6e4a8e033fe0d31142c9a9e7cd1cbd053846de8636dce002d568b597e328c82e240564c43b932a37de9d572608cc88dea76065f
+  checksum: ee02214e74e564629cf7102039da7bf9becca571e95f83d2e0ed54bbe5259cd348dd09e959b899a8b3b52b4b6315fbbbb7a05e8642e70a6c215bfb1b3d4ca5f7
   languageName: node
   linkType: hard
 
-"@chaingraph/bitcore-p2p-cash@npm:^9.0.4":
-  version: 9.0.4
-  resolution: "@chaingraph/bitcore-p2p-cash@npm:9.0.4"
+"@chaingraph/bitcore-p2p-cash@npm:^9.0.5":
+  version: 9.0.5
+  resolution: "@chaingraph/bitcore-p2p-cash@npm:9.0.5"
   dependencies:
-    "@chaingraph/bitcore-lib-cash": ^9.0.4
+    "@chaingraph/bitcore-lib-cash": ^9.0.5
     bloom-filter: ^0.2.0
     buffers: "github:bitpay/node-buffers#v0.1.2-bitpay"
     socks5-client: ^0.3.6
-  checksum: 303de34369f061e00a01f4a47ab58c0251c20f48c168f70fb86081653e135f87f149e7787bfb189a737cb88456088fa964d3ecf24325652dbd36e58888470a32
+  checksum: d0c29e7d7a770b85f769f7fe9205932e94c84d7ed49f22731a23863d94a31010fedb0e12eb311ec870af329c091f59a2a2cc3b5845258b9048ed3ded4f19ddea
   languageName: node
   linkType: hard
 
@@ -2888,7 +2888,7 @@ __metadata:
   dependencies:
     "@ava/typescript": ^3.0.1
     "@bitauth/libauth": ^2.0.0-alpha.8
-    "@chaingraph/bitcore-p2p-cash": ^9.0.4
+    "@chaingraph/bitcore-p2p-cash": ^9.0.5
     "@istanbuljs/nyc-config-typescript": ^1.0.2
     "@types/dotenv": ^8.2.0
     "@types/lru-cache": ^7.10.10
