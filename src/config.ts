@@ -44,6 +44,7 @@ const expectedOptions = [
   'CHAINGRAPH_POSTGRES_CONNECTION_STRING',
   'CHAINGRAPH_POSTGRES_MAX_CONNECTIONS',
   'CHAINGRAPH_POSTGRES_SYNCHRONOUS_COMMIT',
+  'CHAINGRAPH_POSTGRES_INSERT_CHUNK_SIZE_MB',
   'CHAINGRAPH_TRUSTED_NODES',
   'CHAINGRAPH_USER_AGENT',
   'NODE_ENV',
@@ -361,6 +362,17 @@ const chaingraphUserAgent =
  */
 const postgresSynchronousCommit =
   configuration.CHAINGRAPH_POSTGRES_SYNCHRONOUS_COMMIT !== 'false';
+
+/**
+ * Set via the `CHAINGRAPH_POSTGRES_INSERT_CHUNK_SIZE_MB` environment variable.
+ */
+const postgresInsertChunkSizeMbValue = Number(
+  configuration.CHAINGRAPH_POSTGRES_INSERT_CHUNK_SIZE_MB
+);
+if (isNaN(postgresInsertChunkSizeMbValue)) {
+  // eslint-disable-next-line functional/no-throw-statement
+  throw new Error('CHAINGRAPH_POSTGRES_INSERT_CHUNK_SIZE_MB must be a number.');
+}
 
 /**
  * `true` if the `NODE_ENV` environment variable is `production`.
