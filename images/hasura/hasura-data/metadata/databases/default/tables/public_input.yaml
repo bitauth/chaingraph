@@ -35,6 +35,11 @@ computed_fields:
       function:
         name: input_unlocking_bytecode_pattern
         schema: public
+  - name: unlocking_bytecode_hex
+    definition:
+      function:
+        name: input_unlocking_bytecode_hex
+        schema: public
   - name: value_satoshis
     definition:
       function:
@@ -53,6 +58,7 @@ select_permissions:
       computed_fields:
         - redeem_bytecode_pattern
         - unlocking_bytecode_pattern
+        - unlocking_bytecode_hex
         - value_satoshis
       filter: {}
       limit: 1000

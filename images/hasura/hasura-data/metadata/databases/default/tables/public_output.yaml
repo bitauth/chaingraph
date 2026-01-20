@@ -22,6 +22,11 @@ computed_fields:
       function:
         name: output_locking_bytecode_pattern
         schema: public
+  - name: locking_bytecode_hex
+    definition:
+      function:
+        name: output_locking_bytecode_hex
+        schema: public
 select_permissions:
   - role: public
     permission:
@@ -36,5 +41,6 @@ select_permissions:
         - nonfungible_token_commitment
       computed_fields:
         - locking_bytecode_pattern
+        - locking_bytecode_hex
       filter: {}
       limit: 5000
