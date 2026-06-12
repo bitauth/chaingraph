@@ -1980,6 +1980,34 @@ test.serial('[e2e] handles re-org of a single block', async (t) => {
   t.pass();
 });
 
+test.serial(
+  '[e2e] new block saved after reorg',
+  async (t) => {
+    const acceptedBlocks = (
+      await client.query<{
+        hash: string;
+        nodeName: string;
+      }>(
+        /* sql */ `
+      SELECT node.name AS "nodeName", encode(block.hash, 'hex') AS hash
+        FROM node_block
+        INNER JOIN node
+          ON node.internal_id = node_block.node_internal_id
+        INNER JOIN block
+          ON block.internal_id = node_block.block_internal_id
+        WHERE node.name = 'node3'
+          AND block.height = $1
+        ORDER BY block.hash;
+    `,
+        [splitHeight + 1]
+      )
+    ).rows;
+    t.deepEqual(acceptedBlocks, [
+      { hash: tipA[0]!.header.hash, nodeName: 'node3' },
+    ]);
+  }
+);
+
 test.serial('[e2e] handles reversal of single-block re-org', async (t) => {
   const tipStartIndex = 2;
   const tipEnd = 6;
