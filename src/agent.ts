@@ -1753,6 +1753,7 @@ export class Agent {
         nodeAcceptances,
         transactionCache: this.transactionCache,
       });
+    this.blockDb?.add(block.hash);
     const completionTime = Date.now();
 
     const durationMs = completionTime - startTime;
@@ -1841,12 +1842,15 @@ export class Agent {
     firstHeight: number,
     nodeName: string
   ) {
-    removeStaleBlocksForNode(this.nodes[nodeName]!.internalId!, staleChain)
+    const node = this.nodes[nodeName]!;
+    node.syncState?.blockReorganizationAtHeight(firstHeight);
+    removeStaleBlocksForNode(node.internalId!, staleChain)
       .then(() => {
         this.logger.info(
           staleChain,
           `${nodeName}: re-organization detected beginning at height: ${firstHeight}. The following stale blocks were removed:`
         );
+        this.scheduleBlockBufferFill();
       })
       .catch((err) => {
         this.logger.error(err);
