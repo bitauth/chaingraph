@@ -8,6 +8,14 @@ metadata:
     {{- include "chaingraph.labels" . | nindent 4 }}
 spec:
   replicas: 1
+  # The agent is a singleton writer: never run two concurrently. Recreate
+  # terminates the old pod before starting its replacement, at the cost of a
+  # brief indexing gap (the agent catches up on restart).
+  strategy:
+    type: Recreate
+    # Explicit null clears the server-defaulted rollingUpdate block left by
+    # previous RollingUpdate deployments (Helm three-way merge).
+    rollingUpdate: null
   selector:
     matchLabels:
       app: chaingraph-agent
@@ -41,6 +49,8 @@ spec:
           value: {{ .Values.agent.synchronousCommit | quote }}
         - name: CHAINGRAPH_BLOCK_BUFFER_TARGET_SIZE_MB
           value: {{ .Values.agent.blockBufferTargetSizeMb | quote }}
+        - name: CHAINGRAPH_INCOMPLETE_BLOCK_REPAIR_BATCH_SIZE
+          value: {{ .Values.agent.repairBlocksBatchSize | quote }}
         - name: CHAINGRAPH_GENESIS_BLOCKS
           value: {{ .Values.agent.genesisBlocks | quote }}
         - name: CHAINGRAPH_TRUSTED_NODES
@@ -68,13 +78,17 @@ spec:
           timeoutSeconds: 15
           successThreshold: 1
           failureThreshold: 3
+        # Readiness is tight so rollouts report Ready seconds after the
+        # internal API is up. Liveness (above) stays coarse on purpose: a
+        # CPU-bound catch-up can block the event loop (and /health-check),
+        # and a twitchy liveness probe would kill the agent mid-recovery.
         readinessProbe:
           httpGet:
             path: /health-check
             port: {{ .Values.agent.port }}
-          initialDelaySeconds: 30
-          periodSeconds: 60
-          timeoutSeconds: 15
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
           successThreshold: 1
           failureThreshold: 3
         resources: {}

@@ -1,0 +1,2 @@
+-- This migration archives orphaned mempool descendants into
+-- node_transaction_history. The data move is intentionally not reversible.

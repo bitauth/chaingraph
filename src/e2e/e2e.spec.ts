@@ -27,6 +27,8 @@ import { execa } from 'execa';
 import got from 'got';
 import pg from 'pg';
 
+import type { ChaingraphTransaction } from '../types/chaingraph.js';
+
 import { chaingraphE2eLogPath, logger } from './e2e.spec.logging.helper.js';
 import {
   chipnetCashTokensTx,
@@ -59,10 +61,27 @@ const recreateDbOnStartup = true as boolean;
 const dir = dirname(fileURLToPath(import.meta.url));
 const migration = (path: string) =>
   resolve(dir, '../../images/hasura/hasura-data/migrations/', path);
+const backfillOrphanMempoolDescendantsMigrationPath = migration(
+  'default/1778158619747_backfill_orphan_mempool_descendants/up.sql'
+);
 const dbUpMigrationPaths = [
   migration('default/1616195337538_init/up.sql'),
   migration('default/1673124945608_tokens/up.sql'),
   migration('default/1676794104752_parse_bytecode_pattern/up.sql'),
+  migration(
+    'default/1778151011521_cascade_invalidate_mempool_descendants/up.sql'
+  ),
+  backfillOrphanMempoolDescendantsMigrationPath,
+  migration('default/1778351597200_fix_block_encoded_transaction_count/up.sql'),
+  migration(
+    'default/1778415174939_fix_data_carrier_outputs_empty_bytecode/up.sql'
+  ),
+  migration('default/1778429124205_fix_coinbase_only_value_aggregates/up.sql'),
+  migration(
+    'default/1778435997270_add_node_transaction_history_primary_key/up.sql'
+  ),
+  migration('default/1778437612917_fix_zero_length_pushdata_patterns/up.sql'),
+  migration('default/1778438318512_fix_redeem_bytecode_parser/up.sql'),
 ];
 
 const chaingraphInternalApiPort = '3201';
@@ -138,9 +157,11 @@ const postgresE2eConnectionStringTestDb = `${postgresE2eConnectionStringBase}/${
 const e2eEnvVariables = {
   /* eslint-disable @typescript-eslint/naming-convention */
   CHAINGRAPH_GENESIS_BLOCKS: `${e2eTestNetworkMagicHex}:${genesisBlockRaw},e3e1f3e8:${genesisBlockRaw},dab5bffa:${testnetGenesisBlockRaw}`,
+  CHAINGRAPH_INCOMPLETE_BLOCK_REPAIR_BATCH_SIZE: '10000',
   CHAINGRAPH_INTERNAL_API_PORT: chaingraphInternalApiPort,
   CHAINGRAPH_LOG_FIREHOSE: logP2pMessage.toString(),
   CHAINGRAPH_LOG_PATH: chaingraphE2eLogPath,
+  CHAINGRAPH_MEMPOOL_TRANSACTION_EXPIRATION_SCAN_INTERVAL_MS: '100',
   CHAINGRAPH_POSTGRES_CONNECTION_STRING: postgresE2eConnectionStringTestDb,
   CHAINGRAPH_TRUSTED_NODES: e2eTrustedNodesSet1,
   NODE_ENV: 'production',
@@ -558,6 +579,186 @@ const sleep = async (ms: number) =>
     setTimeout(res, ms);
   });
 
+const repeatedHashByteLength = 32;
+const transactionSaveConflictPollingAttempts = 50;
+const transactionSaveConflictPollingIntervalMs = 20;
+const waitForTransactionSaveConflict = async (
+  transactionHash: string,
+  remainingAttempts = transactionSaveConflictPollingAttempts
+): Promise<void> => {
+  const result = await client.query<{ waiting: boolean }>(
+    /* sql */ `
+    SELECT EXISTS (
+      SELECT 1
+        FROM pg_stat_activity
+        -- cspell:disable-next-line
+        WHERE datname = $1
+          AND query LIKE '%INSERT INTO transaction%'
+          AND query LIKE $2
+          AND wait_event_type IS NOT NULL
+    ) AS waiting;
+  `,
+    [e2eTestDbName, `%${transactionHash}%`]
+  );
+  if (result.rows[0]!.waiting) {
+    return;
+  }
+  if (remainingAttempts === 0) {
+    // eslint-disable-next-line functional/no-throw-statement
+    throw new Error(
+      `Timed out waiting for saveTransactionForNodes conflict on ${transactionHash}.`
+    );
+  }
+  await sleep(transactionSaveConflictPollingIntervalMs);
+  await waitForTransactionSaveConflict(transactionHash, remainingAttempts - 1);
+};
+
+const blockRepairPollingAttempts = 40;
+const blockRepairPollingIntervalMs = 250;
+const getBlockTransactionCount = async (blockHash: string) =>
+  Number(
+    (
+      await client.query<{ count: string }>(
+        /* sql */ `
+        SELECT COUNT(*) FROM block_transaction
+          INNER JOIN block ON block.internal_id = block_transaction.block_internal_id
+          WHERE block.hash = $1;
+      `,
+        [hexToBin(blockHash)]
+      )
+    ).rows[0]!.count
+  );
+const waitForBlockTransactionCount = async (
+  blockHash: string,
+  expectedCount: number,
+  remainingAttempts = blockRepairPollingAttempts
+): Promise<number> => {
+  const count = await getBlockTransactionCount(blockHash);
+  if (count === expectedCount || remainingAttempts === 0) {
+    return count;
+  }
+  await sleep(blockRepairPollingIntervalMs);
+  return waitForBlockTransactionCount(
+    blockHash,
+    expectedCount,
+    remainingAttempts - 1
+  );
+};
+
+const mempoolExpirationPollingAttempts = 50;
+const mempoolExpirationPollingIntervalMs = 100;
+const getExpiredMempoolArchiveState = async () =>
+  (
+    await client.query<{
+      historyRowCount: number;
+      inMempool: boolean;
+      replacedAt: string | null;
+      transactionName: string;
+    }>(/* sql */ `
+WITH transaction_values (name, hash) AS (
+    VALUES
+      ('expiry_parent_a', decode(repeat('d1', 32), 'hex')),
+      ('expiry_child_b',  decode(repeat('d2', 32), 'hex')),
+      ('expiry_child_c',  decode(repeat('d3', 32), 'hex'))
+),
+selected_node AS (
+    SELECT internal_id
+      FROM node
+      WHERE name = 'node1'
+),
+named_transactions AS (
+    SELECT transaction_values.name, transaction.internal_id
+      FROM transaction
+      JOIN transaction_values
+        ON transaction_values.hash = transaction.hash
+)
+SELECT named_transactions.name AS "transactionName",
+       (node_transaction.transaction_internal_id IS NOT NULL) AS "inMempool",
+       COUNT(node_transaction_history.transaction_internal_id)::integer AS "historyRowCount",
+       MIN(node_transaction_history.replaced_at)::text AS "replacedAt"
+  FROM named_transactions
+  CROSS JOIN selected_node
+  LEFT JOIN node_transaction
+    ON node_transaction.node_internal_id = selected_node.internal_id
+   AND node_transaction.transaction_internal_id = named_transactions.internal_id
+  LEFT JOIN node_transaction_history
+    ON node_transaction_history.node_internal_id = selected_node.internal_id
+   AND node_transaction_history.transaction_internal_id = named_transactions.internal_id
+  GROUP BY named_transactions.name, node_transaction.transaction_internal_id
+  ORDER BY named_transactions.name;
+`)
+  ).rows;
+const waitForExpiredMempoolArchive = async (
+  remainingAttempts = mempoolExpirationPollingAttempts
+): Promise<Awaited<ReturnType<typeof getExpiredMempoolArchiveState>>> => {
+  const rows = await getExpiredMempoolArchiveState();
+  const expectedReplacedAt = '2026-01-15 00:00:00';
+  if (
+    rows.every(
+      (row) =>
+        !row.inMempool &&
+        row.historyRowCount === 1 &&
+        row.replacedAt === expectedReplacedAt
+    ) ||
+    remainingAttempts === 0
+  ) {
+    return rows;
+  }
+  await sleep(mempoolExpirationPollingIntervalMs);
+  return waitForExpiredMempoolArchive(remainingAttempts - 1);
+};
+
+const getConfirmedMempoolArchiveState = async () =>
+  (
+    await client.query<{
+      historyRowCount: number;
+      inMempool: boolean;
+      replacedAt: string | null;
+    }>(/* sql */ `
+WITH selected_node AS (
+    SELECT internal_id
+      FROM node
+      WHERE name = 'node1'
+),
+selected_transaction AS (
+    SELECT internal_id
+      FROM transaction
+      WHERE hash = decode(repeat('d5', 32), 'hex')
+)
+SELECT (node_transaction.transaction_internal_id IS NOT NULL) AS "inMempool",
+       COUNT(node_transaction_history.transaction_internal_id)::integer AS "historyRowCount",
+       MIN(node_transaction_history.replaced_at)::text AS "replacedAt"
+  FROM selected_transaction
+  CROSS JOIN selected_node
+  LEFT JOIN node_transaction
+    ON node_transaction.node_internal_id = selected_node.internal_id
+   AND node_transaction.transaction_internal_id = selected_transaction.internal_id
+  LEFT JOIN node_transaction_history
+    ON node_transaction_history.node_internal_id = selected_node.internal_id
+   AND node_transaction_history.transaction_internal_id = selected_transaction.internal_id
+  GROUP BY node_transaction.transaction_internal_id;
+`)
+  ).rows[0];
+
+const confirmedMempoolArchiveCompleted = (
+  row: Awaited<ReturnType<typeof getConfirmedMempoolArchiveState>>
+) =>
+  row !== undefined &&
+  !row.inMempool &&
+  row.historyRowCount === 1 &&
+  row.replacedAt === null;
+
+const waitForConfirmedMempoolArchive = async (
+  remainingAttempts = mempoolExpirationPollingAttempts
+): Promise<Awaited<ReturnType<typeof getConfirmedMempoolArchiveState>>> => {
+  const row = await getConfirmedMempoolArchiveState();
+  if (confirmedMempoolArchiveCompleted(row) || remainingAttempts === 0) {
+    return row;
+  }
+  await sleep(mempoolExpirationPollingIntervalMs);
+  return waitForConfirmedMempoolArchive(remainingAttempts - 1);
+};
+
 test.serial(
   '[e2e] ignores inbound transactions before initial sync is complete',
   async (t) => {
@@ -609,16 +810,927 @@ test.serial('[e2e] creates expected indexes after initial sync', async (t) => {
     'node_internal_id_key',
     'node_name_key',
     'node_pkey',
+    'node_transaction_history_pkey',
     'node_transaction_pkey',
     'output_pkey',
     'output_search_index',
     'spent_by_index',
+    'token_category_index',
     'transaction_hash_key',
     'transaction_pkey',
+  ]);
+  // cspell:ignore tgenabled tgname
+  const triggers = (
+    await client.query<{
+      tgenabled: string;
+      tgname: string;
+    }>(/* sql */ `
+  SELECT tgname, tgenabled FROM pg_trigger
+    WHERE tgname IN (
+      'trigger_public_node_block_insert',
+      'trigger_public_node_transaction_history_insert'
+    )
+    ORDER BY tgname;
+  `)
+  ).rows;
+  t.deepEqual(triggers, [
+    { tgenabled: 'O', tgname: 'trigger_public_node_block_insert' },
+    {
+      tgenabled: 'O',
+      tgname: 'trigger_public_node_transaction_history_insert',
+    },
   ]);
   clearStdoutBuffer();
   t.pass();
 });
+
+test.serial(
+  '[e2e] getAllKnownBlockHashes returns hex hashes for every known block',
+  async (t) => {
+    const originalPostgresConnectionString =
+      process.env.CHAINGRAPH_POSTGRES_CONNECTION_STRING;
+    process.env.CHAINGRAPH_POSTGRES_CONNECTION_STRING =
+      postgresE2eConnectionStringTestDb;
+    const { getAllKnownBlockHashes } = await import('../db.js');
+    // eslint-disable-next-line functional/no-try-statement
+    try {
+      const hashes = await getAllKnownBlockHashes();
+      /*
+       * Convert client-side (the previous implementation) to verify the
+       * SQL-side `encode(...)` used by `getAllKnownBlockHashes` matches it.
+       */
+      const expected = (
+        await client.query<{ hash: Buffer }>(/* sql */ `
+  SELECT hash FROM block ORDER BY hash;
+  `)
+      ).rows.map((row) => row.hash.toString('hex'));
+      t.true(expected.length > 0);
+      t.deepEqual(
+        [...hashes].sort((a, b) => (a < b ? -1 : Number(a > b))),
+        expected
+      );
+      const hexPattern = /^[0-9a-f]{64}$/u;
+      t.true(hashes.every((hash) => hexPattern.test(hash)));
+    } finally {
+      if (originalPostgresConnectionString === undefined) {
+        delete process.env.CHAINGRAPH_POSTGRES_CONNECTION_STRING;
+      } else {
+        process.env.CHAINGRAPH_POSTGRES_CONNECTION_STRING =
+          originalPostgresConnectionString;
+      }
+    }
+  }
+);
+
+test.serial(
+  '[e2e] records node validation after concurrent transaction insert conflict',
+  async (t) => {
+    const transactionHash = 'c1'.repeat(repeatedHashByteLength);
+    const validatedAt = new Date('2026-01-01T00:00:00.000Z');
+    const transaction: ChaingraphTransaction = {
+      hash: transactionHash,
+      inputs: [
+        {
+          outpointIndex: 0,
+          outpointTransactionHash: 'c2'.repeat(repeatedHashByteLength),
+          sequenceNumber: 0,
+          unlockingBytecode: '51',
+        },
+      ],
+      isCoinbase: false,
+      locktime: 0,
+      outputs: [
+        {
+          lockingBytecode: '51',
+          valueSatoshis: 1000n,
+        },
+      ],
+      sizeBytes: 100,
+      version: 1,
+    };
+    const nodeInternalId = Number(
+      (
+        await client.query<{ internalId: number }>(
+          /* sql */ `SELECT internal_id AS "internalId" FROM node WHERE name = 'node1';`
+        )
+      ).rows[0]!.internalId
+    );
+    await client.query(
+      /* sql */ `
+      DELETE FROM node_transaction
+        USING transaction
+        WHERE node_transaction.transaction_internal_id = transaction.internal_id
+          AND transaction.hash = $1;
+    `,
+      [Buffer.from(transactionHash, 'hex')]
+    );
+    await client.query(
+      /* sql */ `
+      DELETE FROM input
+        USING transaction
+        WHERE input.transaction_internal_id = transaction.internal_id
+          AND transaction.hash = $1;
+    `,
+      [Buffer.from(transactionHash, 'hex')]
+    );
+    await client.query(
+      /* sql */ `DELETE FROM output WHERE transaction_hash = $1;`,
+      [Buffer.from(transactionHash, 'hex')]
+    );
+    await client.query(/* sql */ `DELETE FROM transaction WHERE hash = $1;`, [
+      Buffer.from(transactionHash, 'hex'),
+    ]);
+    const originalPostgresConnectionString =
+      process.env.CHAINGRAPH_POSTGRES_CONNECTION_STRING;
+    process.env.CHAINGRAPH_POSTGRES_CONNECTION_STRING =
+      postgresE2eConnectionStringTestDb;
+    const { pool: dbPool, saveTransactionForNodes } = await import('../db.js');
+    const competingClient = new pg.Client({
+      connectionString: postgresE2eConnectionStringTestDb,
+    });
+    await competingClient.connect();
+    // eslint-disable-next-line functional/no-let
+    let competingTransactionOpen = false;
+    // eslint-disable-next-line functional/no-try-statement
+    try {
+      await competingClient.query(/* sql */ `BEGIN;`);
+      competingTransactionOpen = true;
+      await competingClient.query(
+        /* sql */ `
+        INSERT INTO transaction (hash, version, locktime, size_bytes, is_coinbase)
+          VALUES ($1, 1, 0, 100, false);
+      `,
+        [Buffer.from(transactionHash, 'hex')]
+      );
+      const savePromise = saveTransactionForNodes(transaction, [
+        { nodeInternalId, validatedAt },
+      ]);
+      await waitForTransactionSaveConflict(transactionHash);
+      await competingClient.query(/* sql */ `COMMIT;`);
+      competingTransactionOpen = false;
+      await t.notThrowsAsync(savePromise);
+      const savedValidationCount = Number(
+        (
+          await client.query<{ count: string }>(
+            /* sql */ `
+            SELECT COUNT(*)::bigint AS count
+              FROM node_transaction
+              JOIN transaction
+                ON transaction.internal_id = node_transaction.transaction_internal_id
+              WHERE transaction.hash = $1
+                AND node_transaction.node_internal_id = $2
+                AND node_transaction.validated_at = $3;
+          `,
+            [Buffer.from(transactionHash, 'hex'), nodeInternalId, validatedAt]
+          )
+        ).rows[0]!.count
+      );
+      t.deepEqual(savedValidationCount, 1);
+    } finally {
+      if (competingTransactionOpen) {
+        await competingClient.query(/* sql */ `ROLLBACK;`).catch((err) => {
+          logger.debug(err);
+        });
+      }
+      await client.query(
+        /* sql */ `
+        DELETE FROM node_transaction
+          USING transaction
+          WHERE node_transaction.transaction_internal_id = transaction.internal_id
+            AND transaction.hash = $1;
+      `,
+        [Buffer.from(transactionHash, 'hex')]
+      );
+      await client.query(
+        /* sql */ `
+        DELETE FROM input
+          USING transaction
+          WHERE input.transaction_internal_id = transaction.internal_id
+            AND transaction.hash = $1;
+      `,
+        [Buffer.from(transactionHash, 'hex')]
+      );
+      await client.query(
+        /* sql */ `DELETE FROM output WHERE transaction_hash = $1;`,
+        [Buffer.from(transactionHash, 'hex')]
+      );
+      await client.query(/* sql */ `DELETE FROM transaction WHERE hash = $1;`, [
+        Buffer.from(transactionHash, 'hex'),
+      ]);
+      await competingClient.end();
+      await dbPool.end();
+      if (originalPostgresConnectionString === undefined) {
+        delete process.env.CHAINGRAPH_POSTGRES_CONNECTION_STRING;
+      } else {
+        process.env.CHAINGRAPH_POSTGRES_CONNECTION_STRING =
+          originalPostgresConnectionString;
+      }
+    }
+  }
+);
+
+test.serial(
+  '[e2e] cascades replaced mempool transaction history to same-node descendants',
+  async (t) => {
+    await client.query(/* sql */ `BEGIN;`);
+    // eslint-disable-next-line functional/no-try-statement
+    try {
+      await client.query(/* sql */ `
+WITH transaction_values (name, hash) AS (
+    VALUES
+      ('parent_a', decode(repeat('f1', 32), 'hex')),
+      ('child_b',  decode(repeat('f3', 32), 'hex')),
+      ('child_c',  decode(repeat('f4', 32), 'hex'))
+)
+INSERT INTO transaction (hash, version, locktime, size_bytes, is_coinbase)
+  SELECT hash, 1, 0, 100, false
+    FROM transaction_values;
+`);
+      await client.query(/* sql */ `
+WITH transaction_values (name, hash) AS (
+    VALUES
+      ('parent_a', decode(repeat('f1', 32), 'hex')),
+      ('child_b',  decode(repeat('f3', 32), 'hex'))
+)
+INSERT INTO output (transaction_hash, output_index, value_satoshis, locking_bytecode)
+  SELECT hash, 0, 1000, '\\x51'::bytea
+    FROM transaction_values;
+`);
+      await client.query(/* sql */ `
+WITH input_values (child_name, parent_name, input_index) AS (
+    VALUES
+      ('child_b', 'parent_a', 0),
+      ('child_c', 'child_b',  0)
+),
+transaction_values (name, hash) AS (
+    VALUES
+      ('parent_a', decode(repeat('f1', 32), 'hex')),
+      ('child_b',  decode(repeat('f3', 32), 'hex')),
+      ('child_c',  decode(repeat('f4', 32), 'hex'))
+),
+named_transactions AS (
+    SELECT transaction_values.name, transaction.internal_id, transaction.hash
+      FROM transaction
+      JOIN transaction_values
+        ON transaction_values.hash = transaction.hash
+)
+INSERT INTO input (transaction_internal_id, input_index, outpoint_index, sequence_number, outpoint_transaction_hash, unlocking_bytecode)
+  SELECT child.internal_id, input_values.input_index, 0, 0, parent.hash, '\\x51'::bytea
+    FROM input_values
+    JOIN named_transactions child
+      ON child.name = input_values.child_name
+    JOIN named_transactions parent
+      ON parent.name = input_values.parent_name;
+`);
+      await client.query(/* sql */ `
+WITH selected_nodes AS (
+    SELECT name, internal_id
+      FROM node
+      WHERE name IN ('node1', 'node2')
+),
+transaction_values (name, hash) AS (
+    VALUES
+      ('child_b', decode(repeat('f3', 32), 'hex')),
+      ('child_c', decode(repeat('f4', 32), 'hex'))
+),
+named_transactions AS (
+    SELECT transaction_values.name, transaction.internal_id
+      FROM transaction
+      JOIN transaction_values
+        ON transaction_values.hash = transaction.hash
+)
+INSERT INTO node_transaction (node_internal_id, transaction_internal_id, validated_at)
+  SELECT selected_nodes.internal_id, named_transactions.internal_id, timestamp '2026-01-01 00:00:00'
+    FROM selected_nodes
+    CROSS JOIN named_transactions;
+`);
+      await client.query(/* sql */ `
+WITH selected_nodes AS (
+    SELECT name, internal_id
+      FROM node
+      WHERE name = 'node1'
+),
+transaction_values (name, hash) AS (
+    VALUES
+      ('parent_a', decode(repeat('f1', 32), 'hex'))
+),
+named_transactions AS (
+    SELECT transaction_values.name, transaction.internal_id
+      FROM transaction
+      JOIN transaction_values
+        ON transaction_values.hash = transaction.hash
+)
+INSERT INTO node_transaction_history (node_internal_id, transaction_internal_id, validated_at, replaced_at)
+  SELECT selected_nodes.internal_id,
+         named_transactions.internal_id,
+         timestamp '2026-01-01 00:00:00',
+         timestamp '2026-01-01 00:10:00'
+    FROM selected_nodes
+    CROSS JOIN named_transactions;
+`);
+      const remainingMempool = (
+        await client.query<{
+          nodeName: string;
+          transactionName: string;
+        }>(/* sql */ `
+WITH transaction_values (name, hash) AS (
+    VALUES
+      ('child_b', decode(repeat('f3', 32), 'hex')),
+      ('child_c', decode(repeat('f4', 32), 'hex'))
+)
+SELECT node.name AS "nodeName", transaction_values.name AS "transactionName"
+  FROM node_transaction
+  JOIN node
+    ON node.internal_id = node_transaction.node_internal_id
+  JOIN transaction
+    ON transaction.internal_id = node_transaction.transaction_internal_id
+  JOIN transaction_values
+    ON transaction_values.hash = transaction.hash
+  ORDER BY "nodeName", "transactionName";
+`)
+      ).rows;
+      t.deepEqual(remainingMempool, [
+        { nodeName: 'node2', transactionName: 'child_b' },
+        { nodeName: 'node2', transactionName: 'child_c' },
+      ]);
+      const archivedDescendants = (
+        await client.query<{
+          replacedAt: string;
+          transactionName: string;
+        }>(/* sql */ `
+WITH transaction_values (name, hash) AS (
+    VALUES
+      ('child_b', decode(repeat('f3', 32), 'hex')),
+      ('child_c', decode(repeat('f4', 32), 'hex'))
+)
+SELECT transaction_values.name AS "transactionName",
+       node_transaction_history.replaced_at::text AS "replacedAt"
+  FROM node_transaction_history
+  JOIN node
+    ON node.internal_id = node_transaction_history.node_internal_id
+  JOIN transaction
+    ON transaction.internal_id = node_transaction_history.transaction_internal_id
+  JOIN transaction_values
+    ON transaction_values.hash = transaction.hash
+  WHERE node.name = 'node1'
+  ORDER BY "transactionName";
+`)
+      ).rows;
+      t.deepEqual(archivedDescendants, [
+        { replacedAt: '2026-01-01 00:10:00', transactionName: 'child_b' },
+        { replacedAt: '2026-01-01 00:10:00', transactionName: 'child_c' },
+      ]);
+    } finally {
+      await client.query(/* sql */ `ROLLBACK;`);
+    }
+  }
+);
+
+test.serial(
+  '[e2e] archives expired mempool transactions and descendants',
+  async (t) => {
+    await client.query(/* sql */ `
+WITH transaction_values (name, hash) AS (
+    VALUES
+      ('expiry_parent_a', decode(repeat('d1', 32), 'hex')),
+      ('expiry_child_b',  decode(repeat('d2', 32), 'hex')),
+      ('expiry_child_c',  decode(repeat('d3', 32), 'hex'))
+)
+INSERT INTO transaction (hash, version, locktime, size_bytes, is_coinbase)
+  SELECT hash, 1, 0, 100, false
+    FROM transaction_values;
+`);
+    // eslint-disable-next-line functional/no-try-statement
+    try {
+      await client.query(/* sql */ `
+WITH transaction_values (name, hash) AS (
+    VALUES
+      ('expiry_parent_a', decode(repeat('d1', 32), 'hex')),
+      ('expiry_child_b',  decode(repeat('d2', 32), 'hex'))
+)
+INSERT INTO output (transaction_hash, output_index, value_satoshis, locking_bytecode)
+  SELECT hash, 0, 1000, '\\x51'::bytea
+    FROM transaction_values;
+`);
+      await client.query(/* sql */ `
+WITH input_values (child_name, parent_name, input_index) AS (
+    VALUES
+      ('expiry_child_b', 'expiry_parent_a', 0),
+      ('expiry_child_c', 'expiry_child_b',  0)
+),
+transaction_values (name, hash) AS (
+    VALUES
+      ('expiry_parent_a', decode(repeat('d1', 32), 'hex')),
+      ('expiry_child_b',  decode(repeat('d2', 32), 'hex')),
+      ('expiry_child_c',  decode(repeat('d3', 32), 'hex'))
+),
+named_transactions AS (
+    SELECT transaction_values.name, transaction.internal_id, transaction.hash
+      FROM transaction
+      JOIN transaction_values
+        ON transaction_values.hash = transaction.hash
+)
+INSERT INTO input (transaction_internal_id, input_index, outpoint_index, sequence_number, outpoint_transaction_hash, unlocking_bytecode)
+  SELECT child.internal_id, input_values.input_index, 0, 0, parent.hash, '\\x51'::bytea
+    FROM input_values
+    JOIN named_transactions child
+      ON child.name = input_values.child_name
+    JOIN named_transactions parent
+      ON parent.name = input_values.parent_name;
+`);
+      await client.query(/* sql */ `
+WITH selected_node AS (
+    SELECT internal_id
+      FROM node
+      WHERE name = 'node1'
+),
+transaction_values (name, hash) AS (
+    VALUES
+      ('expiry_parent_a', decode(repeat('d1', 32), 'hex')),
+      ('expiry_child_b',  decode(repeat('d2', 32), 'hex')),
+      ('expiry_child_c',  decode(repeat('d3', 32), 'hex'))
+),
+named_transactions AS (
+    SELECT transaction_values.name, transaction.internal_id
+      FROM transaction
+      JOIN transaction_values
+        ON transaction_values.hash = transaction.hash
+)
+INSERT INTO node_transaction (node_internal_id, transaction_internal_id, validated_at)
+  SELECT selected_node.internal_id,
+         named_transactions.internal_id,
+         CASE
+           WHEN named_transactions.name = 'expiry_parent_a'
+             THEN timestamp '2026-01-01 00:00:00'
+           ELSE CURRENT_TIMESTAMP + interval '1 day'
+         END
+    FROM selected_node
+    CROSS JOIN named_transactions;
+`);
+      const archivedTransactions = await waitForExpiredMempoolArchive();
+      t.deepEqual(archivedTransactions, [
+        {
+          historyRowCount: 1,
+          inMempool: false,
+          replacedAt: '2026-01-15 00:00:00',
+          transactionName: 'expiry_child_b',
+        },
+        {
+          historyRowCount: 1,
+          inMempool: false,
+          replacedAt: '2026-01-15 00:00:00',
+          transactionName: 'expiry_child_c',
+        },
+        {
+          historyRowCount: 1,
+          inMempool: false,
+          replacedAt: '2026-01-15 00:00:00',
+          transactionName: 'expiry_parent_a',
+        },
+      ]);
+    } finally {
+      await client.query(/* sql */ `
+WITH transaction_values (hash) AS (
+    VALUES
+      (decode(repeat('d1', 32), 'hex')),
+      (decode(repeat('d2', 32), 'hex')),
+      (decode(repeat('d3', 32), 'hex'))
+),
+named_transactions AS (
+    SELECT transaction.internal_id
+      FROM transaction
+      JOIN transaction_values
+        ON transaction_values.hash = transaction.hash
+)
+DELETE FROM node_transaction
+  USING named_transactions
+  WHERE node_transaction.transaction_internal_id = named_transactions.internal_id;
+`);
+      await client.query(/* sql */ `
+WITH transaction_values (hash) AS (
+    VALUES
+      (decode(repeat('d1', 32), 'hex')),
+      (decode(repeat('d2', 32), 'hex')),
+      (decode(repeat('d3', 32), 'hex'))
+),
+named_transactions AS (
+    SELECT transaction.internal_id
+      FROM transaction
+      JOIN transaction_values
+        ON transaction_values.hash = transaction.hash
+)
+DELETE FROM node_transaction_history
+  USING named_transactions
+  WHERE node_transaction_history.transaction_internal_id = named_transactions.internal_id;
+`);
+      await client.query(/* sql */ `
+WITH transaction_values (hash) AS (
+    VALUES
+      (decode(repeat('d1', 32), 'hex')),
+      (decode(repeat('d2', 32), 'hex')),
+      (decode(repeat('d3', 32), 'hex'))
+),
+named_transactions AS (
+    SELECT transaction.internal_id
+      FROM transaction
+      JOIN transaction_values
+        ON transaction_values.hash = transaction.hash
+)
+DELETE FROM input
+  USING named_transactions
+  WHERE input.transaction_internal_id = named_transactions.internal_id;
+`);
+      await client.query(/* sql */ `
+WITH transaction_values (hash) AS (
+    VALUES
+      (decode(repeat('d1', 32), 'hex')),
+      (decode(repeat('d2', 32), 'hex')),
+      (decode(repeat('d3', 32), 'hex'))
+)
+DELETE FROM output
+  USING transaction_values
+  WHERE output.transaction_hash = transaction_values.hash;
+`);
+      await client.query(/* sql */ `
+WITH transaction_values (hash) AS (
+    VALUES
+      (decode(repeat('d1', 32), 'hex')),
+      (decode(repeat('d2', 32), 'hex')),
+      (decode(repeat('d3', 32), 'hex'))
+)
+DELETE FROM transaction
+  USING transaction_values
+  WHERE transaction.hash = transaction_values.hash;
+`);
+    }
+  }
+);
+
+test.serial(
+  '[e2e] archives stale mempool transactions already accepted by blocks',
+  async (t) => {
+    await client.query(/* sql */ `
+WITH transaction_values (name, hash) AS (
+    VALUES
+      ('confirmed_parent_a', decode(repeat('d4', 32), 'hex')),
+      ('confirmed_child_b',  decode(repeat('d5', 32), 'hex'))
+)
+INSERT INTO transaction (hash, version, locktime, size_bytes, is_coinbase)
+  SELECT hash, 1, 0, 100, false
+    FROM transaction_values;
+`);
+    // eslint-disable-next-line functional/no-try-statement
+    try {
+      await client.query(/* sql */ `
+INSERT INTO output (transaction_hash, output_index, value_satoshis, locking_bytecode)
+  VALUES (decode(repeat('d4', 32), 'hex'), 0, 1000, '\\x51'::bytea);
+`);
+      await client.query(/* sql */ `
+WITH selected_transaction AS (
+    SELECT internal_id
+      FROM transaction
+      WHERE hash = decode(repeat('d5', 32), 'hex')
+)
+INSERT INTO input (transaction_internal_id, input_index, outpoint_index, sequence_number, outpoint_transaction_hash, unlocking_bytecode)
+  SELECT selected_transaction.internal_id,
+         0,
+         0,
+         0,
+         decode(repeat('d4', 32), 'hex'),
+         '\\x51'::bytea
+    FROM selected_transaction;
+`);
+      await client.query(/* sql */ `
+WITH selected_transaction AS (
+    SELECT internal_id
+      FROM transaction
+      WHERE hash = decode(repeat('d5', 32), 'hex')
+),
+inserted_block AS (
+    INSERT INTO block (height, version, "timestamp", hash, previous_block_hash, merkle_root, bits, nonce, size_bytes)
+      VALUES (4001, 1, 0, decode(repeat('d6', 32), 'hex'), decode(repeat('d7', 32), 'hex'), decode(repeat('d8', 32), 'hex'), 0, 0, 181)
+      RETURNING internal_id
+)
+INSERT INTO block_transaction (block_internal_id, transaction_internal_id, transaction_index)
+  SELECT inserted_block.internal_id, selected_transaction.internal_id, 1
+    FROM inserted_block
+    CROSS JOIN selected_transaction;
+`);
+      await client.query(/* sql */ `
+WITH selected_node AS (
+    SELECT internal_id
+      FROM node
+      WHERE name = 'node1'
+),
+selected_block AS (
+    SELECT internal_id
+      FROM block
+      WHERE hash = decode(repeat('d6', 32), 'hex')
+)
+INSERT INTO node_block (node_internal_id, block_internal_id, accepted_at)
+  SELECT selected_node.internal_id,
+         selected_block.internal_id,
+         timestamp '2026-01-01 00:10:00'
+    FROM selected_node
+    CROSS JOIN selected_block;
+`);
+      await client.query(/* sql */ `
+WITH selected_node AS (
+    SELECT internal_id
+      FROM node
+      WHERE name = 'node1'
+),
+selected_transaction AS (
+    SELECT internal_id
+      FROM transaction
+      WHERE hash = decode(repeat('d5', 32), 'hex')
+)
+INSERT INTO node_transaction (node_internal_id, transaction_internal_id, validated_at)
+  SELECT selected_node.internal_id,
+         selected_transaction.internal_id,
+         timestamp '2026-01-01 00:00:00'
+    FROM selected_node
+    CROSS JOIN selected_transaction;
+`);
+      const archivedTransaction = await waitForConfirmedMempoolArchive();
+      t.deepEqual(archivedTransaction, {
+        historyRowCount: 1,
+        inMempool: false,
+        replacedAt: null,
+      });
+    } finally {
+      await client.query(/* sql */ `
+WITH transaction_values (hash) AS (
+    VALUES
+      (decode(repeat('d4', 32), 'hex')),
+      (decode(repeat('d5', 32), 'hex'))
+),
+named_transactions AS (
+    SELECT transaction.internal_id
+      FROM transaction
+      JOIN transaction_values
+        ON transaction_values.hash = transaction.hash
+)
+DELETE FROM node_transaction
+  USING named_transactions
+  WHERE node_transaction.transaction_internal_id = named_transactions.internal_id;
+`);
+      await client.query(/* sql */ `
+WITH transaction_values (hash) AS (
+    VALUES
+      (decode(repeat('d4', 32), 'hex')),
+      (decode(repeat('d5', 32), 'hex'))
+),
+named_transactions AS (
+    SELECT transaction.internal_id
+      FROM transaction
+      JOIN transaction_values
+        ON transaction_values.hash = transaction.hash
+)
+DELETE FROM node_transaction_history
+  USING named_transactions
+  WHERE node_transaction_history.transaction_internal_id = named_transactions.internal_id;
+`);
+      await client.query(/* sql */ `
+WITH selected_block AS (
+    SELECT internal_id
+      FROM block
+      WHERE hash = decode(repeat('d6', 32), 'hex')
+)
+DELETE FROM node_block
+  USING selected_block
+  WHERE node_block.block_internal_id = selected_block.internal_id;
+`);
+      await client.query(/* sql */ `
+WITH selected_block AS (
+    SELECT internal_id
+      FROM block
+      WHERE hash = decode(repeat('d6', 32), 'hex')
+)
+DELETE FROM node_block_history
+  USING selected_block
+  WHERE node_block_history.block_internal_id = selected_block.internal_id;
+`);
+      await client.query(/* sql */ `
+WITH selected_block AS (
+    SELECT internal_id
+      FROM block
+      WHERE hash = decode(repeat('d6', 32), 'hex')
+)
+DELETE FROM block_transaction
+  USING selected_block
+  WHERE block_transaction.block_internal_id = selected_block.internal_id;
+`);
+      await client.query(/* sql */ `
+DELETE FROM block
+  WHERE hash = decode(repeat('d6', 32), 'hex');
+`);
+      await client.query(/* sql */ `
+WITH selected_transaction AS (
+    SELECT internal_id
+      FROM transaction
+      WHERE hash = decode(repeat('d5', 32), 'hex')
+)
+DELETE FROM input
+  USING selected_transaction
+  WHERE input.transaction_internal_id = selected_transaction.internal_id;
+`);
+      await client.query(/* sql */ `
+DELETE FROM output
+  WHERE transaction_hash = decode(repeat('d4', 32), 'hex');
+`);
+      await client.query(/* sql */ `
+WITH transaction_values (hash) AS (
+    VALUES
+      (decode(repeat('d4', 32), 'hex')),
+      (decode(repeat('d5', 32), 'hex'))
+)
+DELETE FROM transaction
+  USING transaction_values
+  WHERE transaction.hash = transaction_values.hash;
+`);
+    }
+  }
+);
+
+test.serial(
+  '[e2e] backfills existing orphan mempool descendants with idempotence',
+  async (t) => {
+    await client.query(/* sql */ `BEGIN;`);
+    // eslint-disable-next-line functional/no-try-statement
+    try {
+      const backfillMigration = readFileSync(
+        backfillOrphanMempoolDescendantsMigrationPath,
+        'utf8'
+      );
+      await client.query(/* sql */ `
+WITH transaction_values (name, hash) AS (
+    VALUES
+      ('backfill_parent_a', decode(repeat('e1', 32), 'hex')),
+      ('backfill_child_b',  decode(repeat('e2', 32), 'hex')),
+      ('backfill_child_c',  decode(repeat('e3', 32), 'hex'))
+)
+INSERT INTO transaction (hash, version, locktime, size_bytes, is_coinbase)
+  SELECT hash, 1, 0, 100, false
+    FROM transaction_values;
+`);
+      await client.query(/* sql */ `
+WITH transaction_values (name, hash) AS (
+    VALUES
+      ('backfill_parent_a', decode(repeat('e1', 32), 'hex')),
+      ('backfill_child_b',  decode(repeat('e2', 32), 'hex'))
+)
+INSERT INTO output (transaction_hash, output_index, value_satoshis, locking_bytecode)
+  SELECT hash, 0, 1000, '\\x51'::bytea
+    FROM transaction_values;
+`);
+      await client.query(/* sql */ `
+WITH input_values (child_name, parent_name, input_index) AS (
+    VALUES
+      ('backfill_child_b', 'backfill_parent_a', 0),
+      ('backfill_child_c', 'backfill_child_b',  0)
+),
+transaction_values (name, hash) AS (
+    VALUES
+      ('backfill_parent_a', decode(repeat('e1', 32), 'hex')),
+      ('backfill_child_b',  decode(repeat('e2', 32), 'hex')),
+      ('backfill_child_c',  decode(repeat('e3', 32), 'hex'))
+),
+named_transactions AS (
+    SELECT transaction_values.name, transaction.internal_id, transaction.hash
+      FROM transaction
+      JOIN transaction_values
+        ON transaction_values.hash = transaction.hash
+)
+INSERT INTO input (transaction_internal_id, input_index, outpoint_index, sequence_number, outpoint_transaction_hash, unlocking_bytecode)
+  SELECT child.internal_id, input_values.input_index, 0, 0, parent.hash, '\\x51'::bytea
+    FROM input_values
+    JOIN named_transactions child
+      ON child.name = input_values.child_name
+    JOIN named_transactions parent
+      ON parent.name = input_values.parent_name;
+`);
+      await client.query(/* sql */ `
+WITH selected_nodes AS (
+    SELECT name, internal_id
+      FROM node
+      WHERE name = 'node1'
+),
+transaction_values (name, hash) AS (
+    VALUES
+      ('backfill_parent_a', decode(repeat('e1', 32), 'hex'))
+),
+named_transactions AS (
+    SELECT transaction_values.name, transaction.internal_id
+      FROM transaction
+      JOIN transaction_values
+        ON transaction_values.hash = transaction.hash
+)
+INSERT INTO node_transaction_history (node_internal_id, transaction_internal_id, validated_at, replaced_at)
+  SELECT selected_nodes.internal_id,
+         named_transactions.internal_id,
+         timestamp '2026-01-01 00:00:00',
+         timestamp '2026-01-01 00:10:00'
+    FROM selected_nodes
+    CROSS JOIN named_transactions;
+`);
+      await client.query(/* sql */ `
+WITH selected_nodes AS (
+    SELECT name, internal_id
+      FROM node
+      WHERE name = 'node1'
+),
+transaction_values (name, hash) AS (
+    VALUES
+      ('backfill_child_b', decode(repeat('e2', 32), 'hex')),
+      ('backfill_child_c', decode(repeat('e3', 32), 'hex'))
+),
+named_transactions AS (
+    SELECT transaction_values.name, transaction.internal_id
+      FROM transaction
+      JOIN transaction_values
+        ON transaction_values.hash = transaction.hash
+)
+INSERT INTO node_transaction (node_internal_id, transaction_internal_id, validated_at)
+  SELECT selected_nodes.internal_id, named_transactions.internal_id, timestamp '2026-01-01 00:00:00'
+    FROM selected_nodes
+    CROSS JOIN named_transactions;
+`);
+      await client.query(backfillMigration);
+      await client.query(backfillMigration);
+
+      const remainingMempool = (
+        await client.query<{
+          transactionName: string;
+        }>(/* sql */ `
+WITH transaction_values (name, hash) AS (
+    VALUES
+      ('backfill_child_b', decode(repeat('e2', 32), 'hex')),
+      ('backfill_child_c', decode(repeat('e3', 32), 'hex'))
+)
+SELECT transaction_values.name AS "transactionName"
+  FROM node_transaction
+  JOIN node
+    ON node.internal_id = node_transaction.node_internal_id
+  JOIN transaction
+    ON transaction.internal_id = node_transaction.transaction_internal_id
+  JOIN transaction_values
+    ON transaction_values.hash = transaction.hash
+  WHERE node.name = 'node1'
+  ORDER BY "transactionName";
+`)
+      ).rows;
+      t.deepEqual(remainingMempool, []);
+
+      const archivedTransactions = (
+        await client.query<{
+          historyRowCount: number;
+          replacedAt: string;
+          transactionName: string;
+        }>(/* sql */ `
+WITH transaction_values (name, hash) AS (
+    VALUES
+      ('backfill_parent_a', decode(repeat('e1', 32), 'hex')),
+      ('backfill_child_b',  decode(repeat('e2', 32), 'hex')),
+      ('backfill_child_c',  decode(repeat('e3', 32), 'hex'))
+)
+SELECT transaction_values.name AS "transactionName",
+       COUNT(*)::integer AS "historyRowCount",
+       MIN(node_transaction_history.replaced_at)::text AS "replacedAt"
+  FROM node_transaction_history
+  JOIN node
+    ON node.internal_id = node_transaction_history.node_internal_id
+  JOIN transaction
+    ON transaction.internal_id = node_transaction_history.transaction_internal_id
+  JOIN transaction_values
+    ON transaction_values.hash = transaction.hash
+  WHERE node.name = 'node1'
+  GROUP BY transaction_values.name
+  ORDER BY "transactionName";
+`)
+      ).rows;
+      t.deepEqual(archivedTransactions, [
+        {
+          historyRowCount: 1,
+          replacedAt: '2026-01-01 00:10:00',
+          transactionName: 'backfill_child_b',
+        },
+        {
+          historyRowCount: 1,
+          replacedAt: '2026-01-01 00:10:00',
+          transactionName: 'backfill_child_c',
+        },
+        {
+          historyRowCount: 1,
+          replacedAt: '2026-01-01 00:10:00',
+          transactionName: 'backfill_parent_a',
+        },
+      ]);
+    } finally {
+      await client.query(/* sql */ `ROLLBACK;`);
+    }
+  }
+);
 
 test.serial(
   '[e2e] after initial sync is complete, requests transactions as they are announced',
@@ -651,6 +1763,45 @@ test.serial(
     );
     t.deepEqual(result.rows[0]!.encode, halTxRaw);
     t.pass();
+  }
+);
+
+test.serial(
+  '[e2e] records validation when another node announces a known transaction',
+  async (t) => {
+    peers.node2.sendMessage(
+      new peers.node2.messages.Transaction(new Transaction(halTxRaw))
+    );
+    const delay = 1000;
+    await sleep(delay);
+    const validations = await client.query<{ name: string }>(
+      /* sql */ `
+      SELECT node.name
+        FROM node_transaction
+        INNER JOIN node
+          ON node.internal_id = node_transaction.node_internal_id
+        INNER JOIN transaction
+          ON transaction.internal_id = node_transaction.transaction_internal_id
+        WHERE transaction.hash = $1
+        ORDER BY node.name ASC;
+      `,
+      [hexToBin(halTxHash)]
+    );
+    t.deepEqual(
+      validations.rows.map(({ name }) => name),
+      ['node1', 'node2']
+    );
+    await client.query(
+      /* sql */ `
+      DELETE FROM node_transaction
+        USING node, transaction
+        WHERE node_transaction.node_internal_id = node.internal_id
+          AND node_transaction.transaction_internal_id = transaction.internal_id
+          AND node.name = 'node2'
+          AND transaction.hash = $1;
+      `,
+      [hexToBin(halTxHash)]
+    );
   }
 );
 
@@ -733,6 +1884,82 @@ test.serial(
   }
 );
 
+test.serial(
+  '[e2e] [postgres] value aggregates handle coinbase-only blocks',
+  async (t) => {
+    const aggregates = (
+      await client.query<{
+        feeSatoshis: string;
+        generatedValueSatoshis: string;
+        inputValueSatoshis: string;
+        outputValueSatoshis: string;
+      }>(/* sql */ `
+        SELECT
+          block_fee_satoshis(block)::text AS "feeSatoshis",
+          block_generated_value_satoshis(block)::text AS "generatedValueSatoshis",
+          block_input_value_satoshis(block)::text AS "inputValueSatoshis",
+          block_output_value_satoshis(block)::text AS "outputValueSatoshis"
+          FROM block WHERE height = 0;
+      `)
+    ).rows[0]!;
+    t.deepEqual(aggregates, {
+      feeSatoshis: '0',
+      generatedValueSatoshis: '5000000000',
+      inputValueSatoshis: '0',
+      outputValueSatoshis: '5000000000',
+    });
+  }
+);
+
+test.serial(
+  '[e2e] get hex-encoded block with multiple transactions',
+  async (t) => {
+    const blockWithMultipleTransactions = mockchainBeforeFork[1]!;
+    t.true(blockWithMultipleTransactions.transactions.length > 1);
+    /* eslint-disable @typescript-eslint/naming-convention */
+    const encodedHex = (
+      await client.query<{ block_encoded_hex: string }>(
+        /* sql */ `SELECT block_encoded_hex(block) FROM block WHERE hash = $1::bytea;`,
+        [hexToBin(blockWithMultipleTransactions.header.hash)]
+      )
+    ).rows[0]!.block_encoded_hex;
+    /* eslint-enable @typescript-eslint/naming-convention */
+    t.deepEqual(encodedHex, binToHex(blockWithMultipleTransactions.toBuffer()));
+  }
+);
+
+test.serial(
+  '[e2e] [postgres] transaction_data_carrier_outputs ignores empty locking bytecode',
+  async (t) => {
+    const txHash =
+      '0000000000000000000000000000000000000000000000000000000000000075';
+    await client.query(
+      /* sql */ `
+      INSERT INTO transaction (hash, version, locktime, size_bytes, is_coinbase)
+        VALUES ($1::bytea, 1, 0, 10, false);
+    `,
+      [hexToBin(txHash)]
+    );
+    await client.query(
+      /* sql */ `
+      INSERT INTO output (transaction_hash, output_index, value_satoshis, locking_bytecode)
+        VALUES ($1::bytea, 0, 1, $2::bytea);
+    `,
+      [hexToBin(txHash), hexToBin('')]
+    );
+    const outputs = await client.query<{ outputIndex: string }>(
+      /* sql */ `
+      SELECT output_index AS "outputIndex"
+        FROM transaction_data_carrier_outputs(
+          (SELECT transaction FROM transaction WHERE hash = $1::bytea)
+        );
+    `,
+      [hexToBin(txHash)]
+    );
+    t.deepEqual(outputs.rows, []);
+  }
+);
+
 const newBlocks = (
   node: 'node1' | 'node2' | 'node3',
   blocks: BitcoreBlock[]
@@ -790,6 +2017,34 @@ test.serial('[e2e] handles re-org of a single block', async (t) => {
   );
   t.pass();
 });
+
+test.serial(
+  '[e2e] new block saved after reorg',
+  async (t) => {
+    const acceptedBlocks = (
+      await client.query<{
+        hash: string;
+        nodeName: string;
+      }>(
+        /* sql */ `
+      SELECT node.name AS "nodeName", encode(block.hash, 'hex') AS hash
+        FROM node_block
+        INNER JOIN node
+          ON node.internal_id = node_block.node_internal_id
+        INNER JOIN block
+          ON block.internal_id = node_block.block_internal_id
+        WHERE node.name = 'node3'
+          AND block.height = $1
+        ORDER BY block.hash;
+    `,
+        [splitHeight + 1]
+      )
+    ).rows;
+    t.deepEqual(acceptedBlocks, [
+      { hash: tipA[0]!.header.hash, nodeName: 'node3' },
+    ]);
+  }
+);
 
 test.serial('[e2e] handles reversal of single-block re-org', async (t) => {
   const tipStartIndex = 2;
@@ -1029,6 +2284,51 @@ test.serial('[e2e] shuts down with SIGINT', async (t) => {
   t.pass();
 });
 
+const historicalRepairTipIndex = 161;
+const historicalRepairTransactionIndex = 1;
+const historicalRepairBlock = tipA[historicalRepairTipIndex]!;
+const historicalRepairBlockHash = historicalRepairBlock.header.hash;
+
+test.serial(
+  '[e2e] prepares incomplete historical block transaction before restart',
+  async (t) => {
+    const transactionHash =
+      historicalRepairBlock.transactions[historicalRepairTransactionIndex]!
+        .hash;
+    const selectedTransaction = (
+      await client.query<{ hash: string }>(
+        /* sql */ `
+        SELECT encode(transaction.hash, 'hex') AS hash
+          FROM block_transaction
+          INNER JOIN block
+            ON block.internal_id = block_transaction.block_internal_id
+          INNER JOIN transaction
+            ON transaction.internal_id =
+              block_transaction.transaction_internal_id
+          WHERE block.hash = $1
+            AND block_transaction.transaction_index = $2;
+      `,
+        [hexToBin(historicalRepairBlockHash), historicalRepairTransactionIndex]
+      )
+    ).rows;
+    t.deepEqual(selectedTransaction, [{ hash: transactionHash }]);
+    await client.query(
+      /* sql */ `
+        DELETE FROM block_transaction
+          USING block
+          WHERE block.internal_id = block_transaction.block_internal_id
+            AND block.hash = $1
+            AND block_transaction.transaction_index = $2;
+      `,
+      [hexToBin(historicalRepairBlockHash), historicalRepairTransactionIndex]
+    );
+    t.deepEqual(
+      await getBlockTransactionCount(historicalRepairBlockHash),
+      historicalRepairBlock.transactions.length - 1
+    );
+  }
+);
+
 test.serial(
   '[e2e] restores sync-state from database on restart (after initial sync)',
   async (t) => {
@@ -1079,6 +2379,20 @@ test.serial('[e2e] catches up a new node via headers', async (t) => {
 });
 
 test.serial(
+  '[e2e] self-heals incomplete historical block transactions on startup',
+  async (t) => {
+    t.timeout(oneMinute);
+    t.deepEqual(
+      await waitForBlockTransactionCount(
+        historicalRepairBlockHash,
+        historicalRepairBlock.transactions.length
+      ),
+      historicalRepairBlock.transactions.length
+    );
+  }
+);
+
+test.serial(
   '[e2e] handles empty headers messages (fully-synced)',
   async (t) => {
     peers.node1.sendMessage(new peers.node1.messages.Headers([]));
@@ -1089,8 +2403,54 @@ test.serial(
   }
 );
 
+test.serial(
+  '[e2e] saves block transactions if previously announced tx is seen but not yet saved',
+  async (t) => {
+    const tipStartIndex = 162;
+    const [, tx1] = tipA[tipStartIndex]!.transactions;
+    mempool[swapEndianness(tx1!.hash)] = false;
+    const node1RequestedTx = new Promise((res) => {
+      node1.once('peergetdata', (_, message) => {
+        res(message.inventory);
+      });
+    });
+    peers.node1.sendMessage(
+      peers.node1.messages.Inventory.forTransaction(
+        Buffer.from(tx1!.hash, 'hex')
+      )
+    );
+    await node1RequestedTx;
+    logger.debug(
+      `node1: announced tipA[${tipStartIndex}] transaction 1 without providing the transaction: ${
+        tx1!.hash
+      }`
+    );
+    newBlocks('node1', [tipA[tipStartIndex]!]);
+    newBlocks('node2', [tipB[tipStartIndex]!]);
+    newBlocks('node3', [tipA[tipStartIndex]!]);
+    await waitForStdout(/Saved new block – height:\s+3163[^\n]+nodes: node2/u);
+    await waitForStdout(
+      /Saved new block – height:\s+3163[^\n]+nodes: node1, node4/u
+    );
+    const blockTransactionCount = (
+      await client.query<{ count: string }>(
+        /* sql */ `
+        SELECT COUNT(*) FROM block_transaction
+          INNER JOIN block ON block.internal_id = block_transaction.block_internal_id
+          WHERE block.hash = $1;
+      `,
+        [hexToBin(tipA[tipStartIndex]!.header.hash)]
+      )
+    ).rows[0]!.count;
+    t.deepEqual(
+      blockTransactionCount,
+      tipA[tipStartIndex]!.transactions.length.toString()
+    );
+  }
+);
+
 test.serial('[e2e] syncs remaining blocks one-by-one', async (t) => {
-  const tipStartIndex = 162;
+  const tipStartIndex = 163;
   slowFeedBlocks('node1', tipA.slice(tipStartIndex), 1);
   slowFeedBlocks('node2', tipB.slice(tipStartIndex), 1);
   /**
@@ -1360,6 +2720,18 @@ const bytecodeFunction = test.macro<[string, string, string]>({
     `[e2e] [postgres] ${functionName} – ${patternHex}: ${providedTitle ?? ''}`,
 });
 
+const bytecodeFunctionReturnsNull = test.macro<[string, string]>({
+  exec: async (t, functionName, bytecodeHex) => {
+    const result = await client.query<{ isNull: boolean }>(
+      /* sql */ `SELECT ${functionName} ($1) IS NULL AS "isNull";`,
+      [hexToBin(bytecodeHex)]
+    );
+    t.true(result.rows[0]!.isNull);
+  },
+  title: (providedTitle, functionName, bytecodeHex) =>
+    `[e2e] [postgres] ${functionName} – ${bytecodeHex}: ${providedTitle ?? ''}`,
+});
+
 test(
   'P2PKH',
   bytecodeFunction,
@@ -1471,6 +2843,28 @@ test(
 );
 
 test(
+  'zero-length OP_PUSHDATA1',
+  bytecodeFunction,
+  'parse_bytecode_pattern_with_pushdata_lengths',
+  '4c00',
+  '4c00'
+);
+test(
+  'zero-length OP_PUSHDATA2',
+  bytecodeFunction,
+  'parse_bytecode_pattern_with_pushdata_lengths',
+  '4d0000',
+  '4d0000'
+);
+test(
+  'zero-length OP_PUSHDATA4',
+  bytecodeFunction,
+  'parse_bytecode_pattern_with_pushdata_lengths',
+  '4e00000000',
+  '4e00000000'
+);
+
+test(
   'OP_RETURN with OP_PUSHDATA2',
   bytecodeFunction,
   'parse_bytecode_pattern_with_pushdata_lengths',
@@ -1521,10 +2915,9 @@ test(
 
 test(
   'no redeem',
-  bytecodeFunction,
+  bytecodeFunctionReturnsNull,
   'parse_bytecode_pattern_redeem',
-  `0002000051`,
-  ''
+  `0002000051`
 );
 
 test(
@@ -1582,6 +2975,31 @@ test(
     )
   )}`,
   '004e515253'
+);
+
+test(
+  'malformed OP_PUSHDATA1 redeem',
+  bytecodeFunctionReturnsNull,
+  'parse_bytecode_pattern_redeem',
+  '4c'
+);
+test(
+  'malformed OP_PUSHDATA2 redeem',
+  bytecodeFunctionReturnsNull,
+  'parse_bytecode_pattern_redeem',
+  '4d11'
+);
+test(
+  'malformed OP_PUSHDATA4 redeem',
+  bytecodeFunctionReturnsNull,
+  'parse_bytecode_pattern_redeem',
+  '4e112233'
+);
+test(
+  'oversized OP_PUSHDATA4 redeem',
+  bytecodeFunctionReturnsNull,
+  'parse_bytecode_pattern_redeem',
+  '4effffffff'
 );
 
 test('[e2e] [postgres] encode_uint16le', async (t) => {

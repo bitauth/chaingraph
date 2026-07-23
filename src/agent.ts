@@ -31,14 +31,21 @@ import {
   chaingraphLogFirehose,
   chaingraphUserAgent,
   genesisBlocks,
+  incompleteBlockRepairBatchSize,
+  mempoolTransactionExpirationMs,
+  mempoolTransactionExpirationScanIntervalMs,
   postgresMaxConnections,
   trustedNodes,
 } from './config.js';
 import {
   acceptBlocksViaHeaders,
+  archiveMempoolTransaction,
+  archiveMempoolTransactionsAcceptedByBlocks,
   createIndexes,
   getAllKnownBlockHashes,
+  getIncompleteBlocks,
   getIndexCreationProgress,
+  getMempoolTransactionsExpiringBefore,
   listExistingIndexes,
   optionallyDisableSynchronousCommit,
   optionallyEnableSynchronousCommit,
@@ -50,6 +57,7 @@ import {
   saveBlock,
   saveTransactionForNodes,
 } from './db.js';
+import type { ExpiringMempoolTransaction, IncompleteBlock } from './db.js';
 import type { ChaingraphBlock } from './types/chaingraph.js';
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -108,6 +116,27 @@ const renderSyncPercentage = (value: number) => {
 };
 
 const msPerSecond = 1000;
+const durationDecimalPlaces = 1;
+const transactionRateDecimalPlaces = 2;
+
+const formatDurationSeconds = (durationMs: number) =>
+  `${(durationMs / msPerSecond).toFixed(durationDecimalPlaces)}s`;
+
+const formatTransactionRate = (transactionCount: number, durationMs: number) =>
+  durationMs === 0
+    ? 'n/a tx/s'
+    : `${((transactionCount * msPerSecond) / durationMs).toFixed(
+        transactionRateDecimalPlaces
+      )}tx/s`;
+
+const formatTransactionDuration = (
+  transactionCount: number,
+  durationMs: number
+) =>
+  transactionCount === 0
+    ? 'n/a/tx'
+    : `${formatDurationSeconds(durationMs / transactionCount)}/tx`;
+
 /**
  * Convert a bitcoin block header timestamp (UTC in seconds) to a `Date`.
  * @param timestamp - the block header timestamp
@@ -288,6 +317,32 @@ export class Agent {
 
   scheduledBlockBufferFill = false;
 
+  scheduledIncompleteBlockRepair = false;
+
+  incompleteBlockRepairInProgress = false;
+
+  currentIncompleteBlockRepair:
+    | {
+        hash: string;
+        resolve: () => void;
+      }
+    | undefined;
+
+  incompleteBlockRepairTimeout: ReturnType<typeof setTimeout> | undefined;
+
+  mempoolTransactionExpirationScanTimeout:
+    | ReturnType<typeof setTimeout>
+    | undefined;
+
+  mempoolTransactionExpirationTimers = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+
+  incompleteBlockRepairNextHeight = 0;
+
+  completedIncompleteBlockRepairScan = false;
+
   /**
    * The next second after which to log another warning that one or more nodes
    * are unresponsive.
@@ -326,6 +381,7 @@ export class Agent {
     'block_inclusions_index',
     'output_search_index',
     'spent_by_index',
+    'token_category_index',
   ];
 
   /**
@@ -370,10 +426,19 @@ export class Agent {
       targetSize: blockBufferTargetSizeMb * MB,
     });
 
+    const blockDbRestoreStart = Date.now();
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
     getAllKnownBlockHashes().then((hashes) => {
       this.blockDb = new Set(hashes);
       this.blockDbRestored = true;
+      const millisecondsPerSecond = 1000;
+      const restoreSeconds = (
+        (Date.now() - blockDbRestoreStart) /
+        millisecondsPerSecond
+      ).toFixed(1);
+      this.logger.info(
+        `Restored ${hashes.length} known block hashes from the database in ${restoreSeconds} seconds.`
+      );
     });
 
     this.logger.info(
@@ -481,6 +546,7 @@ export class Agent {
          */
         peer.sendMessage(new peer.messages.SendHeaders());
 
+        const nodeRegistrationStart = Date.now();
         // eslint-disable-next-line @typescript-eslint/no-floating-promises
         registerTrustedNodeWithDb({
           latestConnectionBeganAt: new Date(),
@@ -503,6 +569,14 @@ export class Agent {
               : syncedHeaderHashChain
           );
           this.nodes[node.name]!.syncState = new SyncState(initialSyncState);
+          const millisecondsPerSecond = 1000;
+          const chainRestoreSeconds = (
+            (Date.now() - nodeRegistrationStart) /
+            millisecondsPerSecond
+          ).toFixed(1);
+          this.logger.info(
+            `${node.name}: chain state registered and restored from the database in ${chainRestoreSeconds} seconds.`
+          );
           const genesisBlockHeaderFromDb = this.blockTree.getBlockHeaderHash(
             node.name,
             0
@@ -709,6 +783,47 @@ export class Agent {
    * issue requires that Chaingraph be restarted.
    */
 
+  warnIfInitializationDelayed(uninitializedNodes: string[]) {
+    const second = 1000;
+    const currentDelay = Date.now() - this.startTime.getTime();
+    const currentDelaySecondsRounded = Math.round(currentDelay / second);
+    if (this.warnAfterDelaySecond >= currentDelaySecondsRounded) {
+      return;
+    }
+    this.warnAfterDelaySecond = currentDelaySecondsRounded;
+    if (!this.blockDbRestored) {
+      this.logger.warn(
+        `Still restoring known block hashes from the database (${currentDelaySecondsRounded} seconds elapsed). This can take a minute or more on large databases; if it never completes, check database configuration and connectivity.`
+      );
+      return;
+    }
+    /*
+     * A node whose P2P connection is `ready` is not unresponsive – it is
+     * waiting on its chain state to be registered and restored from the
+     * database, which takes time proportional to the node's chain length.
+     */
+    const unconnectedNodes = uninitializedNodes.filter(
+      (id) => this.nodes[id]!.peer.status !== 'ready'
+    );
+    const restoringChainNodes = uninitializedNodes.filter(
+      (id) => this.nodes[id]!.peer.status === 'ready'
+    );
+    if (unconnectedNodes.length > 0) {
+      this.logger.warn(
+        `The following nodes are taking longer than ${currentDelaySecondsRounded} seconds to connect and may be either misconfigured or unresponsive: ${unconnectedNodes.join(
+          ','
+        )}`
+      );
+    }
+    if (restoringChainNodes.length > 0) {
+      this.logger.warn(
+        `Still restoring chain state from the database for: ${restoringChainNodes.join(
+          ','
+        )} (${currentDelaySecondsRounded} seconds elapsed). Restore time is proportional to each node's chain length.`
+      );
+    }
+  }
+
   checkInitialization() {
     const uninitializedNodes = Object.entries(this.nodes).reduce<string[]>(
       (nodes, [id, node]) =>
@@ -717,22 +832,7 @@ export class Agent {
     );
     if (uninitializedNodes.length > 0 || !this.blockDbRestored) {
       const second = 1000;
-      const currentDelay = Date.now() - this.startTime.getTime();
-      const currentDelaySecondsRounded = Math.round(currentDelay / second);
-      if (this.warnAfterDelaySecond < currentDelaySecondsRounded) {
-        this.warnAfterDelaySecond = currentDelaySecondsRounded;
-        if (this.blockDbRestored) {
-          this.logger.warn(
-            `The following nodes are taking longer than ${currentDelaySecondsRounded} seconds to initialize and may be either misconfigured or unresponsive: ${uninitializedNodes.join(
-              ','
-            )}`
-          );
-        } else {
-          this.logger.warn(
-            `Could not restore block hashes from the database after ${currentDelaySecondsRounded} seconds. There may be a database configuration or connectivity problem.`
-          );
-        }
-      }
+      this.warnIfInitializationDelayed(uninitializedNodes);
       setTimeout(() => {
         this.scheduleBlockBufferFill();
       }, second);
@@ -825,9 +925,16 @@ export class Agent {
                     this.logger.info(
                       `Agent: all managed indexes have been created.`
                     );
-                    return reenableMempoolCleaning().then(() => {
+                    return reenableMempoolCleaning().then((schemaIsCurrent) => {
+                      if (!schemaIsCurrent) {
+                        this.logger.warn(
+                          'Agent: WARNING! Database schema is old and missing multiple bug fixes. Update the Hasura image to apply migrations and then restart this agent.'
+                        );
+                      }
                       this.logger.info('Agent: enabled mempool tracking.');
                       this.saveInboundTransactions = true;
+                      this.scheduleIncompleteBlockRepair();
+                      this.scheduleMempoolTransactionExpirationScan();
                     });
                   })
                   .catch((err) => {
@@ -904,6 +1011,334 @@ export class Agent {
       clearInterval(progressLogInterval);
     });
     return indexCreationCompletion;
+  }
+
+  canScanForMempoolTransactionExpirations() {
+    return ![
+      !this.completedInitialSync,
+      !this.saveInboundTransactions,
+      this.waitingForIncompleteBlockRepairScan(),
+      this.mempoolTransactionExpirationScanTimeout !== undefined,
+      this.willShutdown,
+    ].includes(true);
+  }
+
+  waitingForIncompleteBlockRepairScan() {
+    return (
+      incompleteBlockRepairBatchSize !== 0 &&
+      !this.completedIncompleteBlockRepairScan
+    );
+  }
+
+  scheduleMempoolTransactionExpirationScan(delayMs = 0, forceSchedule = false) {
+    if (
+      (!forceSchedule && !this.canScanForMempoolTransactionExpirations()) ||
+      this.willShutdown
+    ) {
+      return;
+    }
+    this.mempoolTransactionExpirationScanTimeout = setTimeout(() => {
+      this.mempoolTransactionExpirationScanTimeout = undefined;
+      this.scanForMempoolTransactionExpirations()
+        .catch((err) => {
+          this.logger.error(
+            err,
+            'Agent: failed to scan for expiring mempool transactions.'
+          );
+        })
+        .finally(() => {
+          this.scheduleMempoolTransactionExpirationScan(
+            mempoolTransactionExpirationScanIntervalMs,
+            true
+          );
+        });
+    }, delayMs);
+  }
+
+  scheduleMempoolTransactionExpiration(
+    transaction: ExpiringMempoolTransaction
+  ) {
+    const key = `${transaction.nodeInternalId}:${transaction.transactionInternalId}`;
+    if (this.mempoolTransactionExpirationTimers.has(key)) {
+      return;
+    }
+    const delayMs = Math.max(transaction.expiresAt.getTime() - Date.now(), 0);
+    const timeout = setTimeout(() => {
+      this.mempoolTransactionExpirationTimers.delete(key);
+      this.expireMempoolTransaction(transaction).catch((err) => {
+        this.logger.error(
+          err,
+          `Agent: failed to expire mempool transaction ${transaction.hash} for node ${transaction.nodeName}.`
+        );
+      });
+    }, delayMs);
+    this.mempoolTransactionExpirationTimers.set(key, timeout);
+  }
+
+  async scanForMempoolTransactionExpirations() {
+    if (!this.saveInboundTransactions || this.willShutdown) {
+      return;
+    }
+    await this.archiveAcceptedMempoolTransactions();
+    const expiresBefore = new Date(
+      Date.now() + mempoolTransactionExpirationScanIntervalMs
+    );
+    const expiringTransactions = await getMempoolTransactionsExpiringBefore({
+      expirationMs: mempoolTransactionExpirationMs,
+      expiresBefore,
+    });
+    if (expiringTransactions.length === 0) {
+      this.logger.debug(
+        `Agent: no mempool transactions expiring before ${expiresBefore.toISOString()}; next scan in ${mempoolTransactionExpirationScanIntervalMs.toLocaleString()}ms.`
+      );
+      return;
+    }
+    this.logger.info(
+      `Agent: found ${
+        expiringTransactions.length
+      } mempool transaction(s) expiring before ${expiresBefore.toISOString()}; scheduling exact expiry.`
+    );
+    expiringTransactions.forEach((transaction) => {
+      this.scheduleMempoolTransactionExpiration(transaction);
+    });
+  }
+
+  async expireMempoolTransaction(transaction: ExpiringMempoolTransaction) {
+    const archivedCount = await archiveMempoolTransaction({
+      nodeInternalId: transaction.nodeInternalId,
+      replacedAt: transaction.expiresAt,
+      transactionInternalId: transaction.transactionInternalId,
+    });
+    if (archivedCount === 0) {
+      this.logger.debug(
+        `Agent: skipped expiry of mempool transaction ${transaction.hash} for node ${transaction.nodeName}; it has already left node_transaction.`
+      );
+      return;
+    }
+    this.logger.warn(
+      `Agent: expired mempool transaction ${transaction.hash} for node ${
+        transaction.nodeName
+      }; archived from node_transaction to node_transaction_history with replaced_at ${transaction.expiresAt.toISOString()}.`
+    );
+  }
+
+  async archiveAcceptedMempoolTransactions() {
+    const archivedTransactions =
+      await archiveMempoolTransactionsAcceptedByBlocks();
+    if (archivedTransactions.length === 0) {
+      return;
+    }
+    this.logger.warn(
+      `Agent: archived ${archivedTransactions.length.toLocaleString()} stale mempool transaction(s) already accepted or replaced by blocks before ordinary expiry.`
+    );
+    archivedTransactions.forEach((transaction) => {
+      if (transaction.replacedAt === null) {
+        this.logger.info(
+          `Agent: archived stale confirmed mempool transaction ${transaction.hash} for node ${transaction.nodeName}; transaction is already accepted by a block, archived with replaced_at NULL.`
+        );
+        return;
+      }
+      this.logger.info(
+        `Agent: archived stale replaced mempool transaction ${
+          transaction.hash
+        } for node ${
+          transaction.nodeName
+        }; an accepted block already spends the same outpoint, archived with replaced_at ${transaction.replacedAt.toISOString()}.`
+      );
+    });
+  }
+
+  canScheduleIncompleteBlockRepair() {
+    return ![
+      incompleteBlockRepairBatchSize === 0,
+      !this.completedInitialSync,
+      this.scheduledIncompleteBlockRepair,
+      this.incompleteBlockRepairInProgress,
+      this.completedIncompleteBlockRepairScan,
+      this.willShutdown,
+    ].includes(true);
+  }
+
+  scheduleIncompleteBlockRepair() {
+    if (!this.canScheduleIncompleteBlockRepair()) {
+      return;
+    }
+    this.incompleteBlockRepairTimeout = setTimeout(() => {
+      this.scheduledIncompleteBlockRepair = false;
+      this.repairIncompleteBlocks().catch((err) => {
+        this.logger.fatal(err);
+        this.shutdown().catch((shutdownErr) => {
+          this.logger.error(shutdownErr);
+        });
+      });
+    });
+    this.scheduledIncompleteBlockRepair = true;
+  }
+
+  getIncompleteBlockRepairRange() {
+    const bestHeight = Math.max(
+      ...Object.values(this.blockTree.getBestHeights())
+    );
+    const finalHeight = bestHeight + 1;
+    const heightLowerBound =
+      this.incompleteBlockRepairNextHeight > bestHeight
+        ? 0
+        : this.incompleteBlockRepairNextHeight;
+    const heightUpperBound = Math.min(
+      heightLowerBound + incompleteBlockRepairBatchSize,
+      finalHeight
+    );
+    return { finalHeight, heightLowerBound, heightUpperBound };
+  }
+
+  updateIncompleteBlockRepairProgress({
+    finalHeight,
+    heightLowerBound,
+    heightUpperBound,
+    incompleteBlockCount,
+    limit,
+  }: {
+    finalHeight: number;
+    heightLowerBound: number;
+    heightUpperBound: number;
+    incompleteBlockCount: number;
+    limit: number;
+  }) {
+    if (incompleteBlockCount === limit) {
+      this.incompleteBlockRepairNextHeight = heightLowerBound;
+      return;
+    }
+    if (heightUpperBound === finalHeight) {
+      this.incompleteBlockRepairNextHeight = 0;
+      this.completedIncompleteBlockRepairScan = true;
+      this.logger.info('Agent: completed incomplete block repair scan.');
+      this.scheduleMempoolTransactionExpirationScan();
+      return;
+    }
+    this.incompleteBlockRepairNextHeight = heightUpperBound;
+  }
+
+  async repairIncompleteBlock(block: IncompleteBlock) {
+    if (this.currentIncompleteBlockRepair !== undefined) {
+      // eslint-disable-next-line functional/no-throw-statement
+      throw new Error(
+        `Agent: attempted to repair incomplete block ${block.height} (${block.hash}) while already repairing ${this.currentIncompleteBlockRepair.hash}.`
+      );
+    }
+    const sourceNodes = this.blockTree.getNodesWithBlock(
+      block.hash,
+      block.height
+    );
+    if (sourceNodes.length === 0) {
+      // eslint-disable-next-line functional/no-throw-statement
+      throw new Error(
+        `Agent: incomplete block ${block.height} (${block.hash}) is not currently accepted by any connected node.`
+      );
+    }
+    this.logger.info(
+      `Agent: self-healing incomplete block ${block.height} (${block.hash}); linked size ${block.linkedSizeBytes}/${block.sizeBytes} bytes across ${block.transactionCount} saved transaction(s).`
+    );
+    const alreadyDownloading = this.blockDownloads.some(
+      (download) => download.hash === block.hash
+    );
+    return new Promise<void>((resolve) => {
+      this.currentIncompleteBlockRepair = {
+        hash: block.hash,
+        resolve,
+      };
+      if (!alreadyDownloading) {
+        this.blockBuffer.reserveBlock();
+        this.requestBlock(block.hash, block.height);
+      }
+    });
+  }
+
+  canRepairIncompleteBlocks() {
+    return (
+      incompleteBlockRepairBatchSize !== 0 &&
+      this.completedInitialSync &&
+      !this.willShutdown
+    );
+  }
+
+  getRegisteredNodeInternalIds() {
+    return Object.values(this.nodes)
+      .map((node) => node.internalId)
+      .filter((id): id is number => id !== undefined);
+  }
+
+  async repairIncompleteBlocksSequentially(blocks: IncompleteBlock[]) {
+    await blocks.reduce<Promise<void>>(async (previousRepair, block) => {
+      await previousRepair;
+      await this.repairIncompleteBlock(block);
+    }, Promise.resolve());
+  }
+
+  async repairIncompleteBlocksOnce() {
+    const { finalHeight, heightLowerBound, heightUpperBound } =
+      this.getIncompleteBlockRepairRange();
+    const scanStartTime = Date.now();
+    const { incompleteBlocks, scannedBlockCount } = await getIncompleteBlocks({
+      excludedBlockHashes: [],
+      heightLowerBound,
+      heightUpperBound,
+      limit: incompleteBlockRepairBatchSize,
+      nodeInternalIds: this.getRegisteredNodeInternalIds(),
+    });
+    const scanDurationMs = Date.now() - scanStartTime;
+    const scanRate =
+      scanDurationMs === 0
+        ? scannedBlockCount * msPerSecond
+        : Math.round((scannedBlockCount / scanDurationMs) * msPerSecond);
+    const scanPerformanceLog = `scanned ${scannedBlockCount.toLocaleString()} block(s) in ${scanDurationMs.toLocaleString()}ms (${scanRate.toLocaleString()} blocks/s)`;
+    if (incompleteBlocks.length === 0) {
+      this.updateIncompleteBlockRepairProgress({
+        finalHeight,
+        heightLowerBound,
+        heightUpperBound,
+        incompleteBlockCount: incompleteBlocks.length,
+        limit: incompleteBlockRepairBatchSize,
+      });
+      this.logger.info(
+        `Agent: no incomplete blocks found from height ${heightLowerBound} to ${
+          heightUpperBound - 1
+        }; ${scanPerformanceLog}.`
+      );
+      return;
+    }
+    this.logger.warn(
+      `Agent: found ${
+        incompleteBlocks.length
+      } incomplete block(s) from height ${heightLowerBound} to ${
+        heightUpperBound - 1
+      }; ${scanPerformanceLog}; requesting full block contents for repair.`
+    );
+    await this.repairIncompleteBlocksSequentially(incompleteBlocks);
+  }
+
+  /**
+   * Audit a bounded range of blocks accepted by currently-connected nodes. If
+   * the saved transactions don't sum to the saved block size, re-request the
+   * full block and let the normal block-saving path repair missing rows.
+   */
+  async repairIncompleteBlocks() {
+    if (!this.canRepairIncompleteBlocks()) {
+      return;
+    }
+    if (this.incompleteBlockRepairInProgress) {
+      return;
+    }
+    this.incompleteBlockRepairInProgress = true;
+    await this.repairIncompleteBlocksOnce()
+      .then(() => {
+        this.incompleteBlockRepairInProgress = false;
+        this.scheduleIncompleteBlockRepair();
+      })
+      .catch((err) => {
+        this.incompleteBlockRepairInProgress = false;
+        // eslint-disable-next-line functional/no-throw-statement
+        throw err;
+      });
   }
 
   /**
@@ -1362,10 +1797,12 @@ export class Agent {
         nodeAcceptances,
         transactionCache: this.transactionCache,
       });
+    this.blockDb?.add(block.hash);
     const completionTime = Date.now();
 
     const durationMs = completionTime - startTime;
     const transactions = attemptedSavedTransactions.length;
+    const savedTransactionCount = transactions - transactionCacheMisses;
     const inputs = attemptedSavedTransactions.reduce(
       (total, tx) => total + tx.inputs.length,
       0
@@ -1399,15 +1836,29 @@ export class Agent {
       .toString()
       .padStart(heightMinWidth, ' ')} | timestamp: ${blockTimestampToDate(
       block.timestamp
-    ).toISOString()} | hash: ${block.hash} | new txs: ${
-      transactions - transactionCacheMisses
-    }/${block.transactions.length.toString()} (${transactionCacheMisses} cache misses) | nodes: ${nodeAcceptances
+    ).toISOString()} | hash: ${
+      block.hash
+    } | new txs: ${savedTransactionCount}/${block.transactions.length.toString()} (${transactionCacheMisses} cache misses) | nodes: ${nodeAcceptances
       .map((acceptance) => acceptance.nodeName)
       .join(', ')}`;
+    const blockInsertLog = `Inserting block ${
+      block.height
+    } with ${savedTransactionCount} new transaction${
+      savedTransactionCount === 1 ? '' : 's'
+    } for ${nodeAcceptances
+      .map((acceptance) => acceptance.nodeName)
+      .join(', ')} took ${formatDurationSeconds(
+      durationMs
+    )} (${formatTransactionDuration(
+      savedTransactionCount,
+      durationMs
+    )}, ${formatTransactionRate(savedTransactionCount, durationMs)})`;
     if (isHistoricalSync) {
       this.logger.debug(blockSyncLog);
+      this.logger.trace(blockInsertLog);
     } else {
       this.logger.info(blockSyncLog);
+      this.logger.debug(blockInsertLog);
     }
 
     nodeAcceptances.forEach((acceptance) => {
@@ -1417,6 +1868,11 @@ export class Agent {
         blockTimestampToDate(block.timestamp)
       );
     });
+    const currentRepair = this.currentIncompleteBlockRepair;
+    if (currentRepair?.hash === block.hash) {
+      currentRepair.resolve();
+      this.currentIncompleteBlockRepair = undefined;
+    }
     this.blockBuffer.removeBlock(block);
   }
 
@@ -1430,12 +1886,15 @@ export class Agent {
     firstHeight: number,
     nodeName: string
   ) {
-    removeStaleBlocksForNode(this.nodes[nodeName]!.internalId!, staleChain)
+    const node = this.nodes[nodeName]!;
+    node.syncState?.blockReorganizationAtHeight(firstHeight);
+    removeStaleBlocksForNode(node.internalId!, staleChain)
       .then(() => {
         this.logger.info(
           staleChain,
           `${nodeName}: re-organization detected beginning at height: ${firstHeight}. The following stale blocks were removed:`
         );
+        this.scheduleBlockBufferFill();
       })
       .catch((err) => {
         this.logger.error(err);
@@ -1500,7 +1959,7 @@ export class Agent {
     txCacheItem.db = true;
     this.transactionCache.set(transactionHash, txCacheItem);
     this.logger.trace(
-      `Marked transaction saved to DB - hash: ${transactionHash}`
+      `Marked transaction as saved to DB - hash: ${transactionHash}`
     );
   }
 
@@ -1542,7 +2001,14 @@ export class Agent {
           .join(', ')} - hash: ${tx.hash}`
       );
       // TODO: collect statistics on save speed
+      const startTime = Date.now();
       await saveTransactionForNodes(tx, validations);
+      const durationMs = Date.now() - startTime;
+      this.logger.debug(
+        `Inserting mempool tx ${
+          tx.hash
+        } for node ${nodeName} took ${formatDurationSeconds(durationMs)}`
+      );
       this.markTransactionSavedToDb(tx.hash);
     }
   }
@@ -1754,6 +2220,16 @@ export class Agent {
     this.willShutdown = true;
     clearInterval(eventLoopDurationInterval);
     clearInterval(this.heartbeatInterval);
+    if (this.incompleteBlockRepairTimeout !== undefined) {
+      clearTimeout(this.incompleteBlockRepairTimeout);
+    }
+    if (this.mempoolTransactionExpirationScanTimeout !== undefined) {
+      clearTimeout(this.mempoolTransactionExpirationScanTimeout);
+    }
+    this.mempoolTransactionExpirationTimers.forEach((timeout) => {
+      clearTimeout(timeout);
+    });
+    this.mempoolTransactionExpirationTimers.clear();
     Object.values(this.nodes).forEach((connection) => {
       connection.disconnect();
     });

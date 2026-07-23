@@ -58,3 +58,31 @@ test('SyncState', (t) => {
   t.deepEqual(state.additionalSyncedHeights, []);
   t.deepEqual(state.latestSyncedBlockTime, new Date(5));
 });
+
+test('SyncState scales when marking many contiguous heights as pending', (t) => {
+  const state = new SyncState({
+    additionalSyncedHeights: [],
+    fullySyncedUpToHeight: 0,
+    pendingSyncOfHeights: [],
+  });
+  const pendingThroughHeight = 4_000;
+  const maximumDurationMs = 1_000;
+
+  const startedAt = Date.now();
+  // eslint-disable-next-line functional/no-loop-statement
+  for (
+    // eslint-disable-next-line functional/no-let
+    let nextHeight = state.getPendingSyncHeight() + 1;
+    nextHeight <= pendingThroughHeight;
+    nextHeight = state.getPendingSyncHeight() + 1
+  ) {
+    state.markHeightAsPendingSync(nextHeight);
+  }
+  const durationMs = Date.now() - startedAt;
+
+  t.deepEqual(state.getPendingSyncHeight(), pendingThroughHeight);
+  t.true(
+    durationMs < maximumDurationMs,
+    `Expected marking contiguous pending heights to complete in less than ${maximumDurationMs}ms; took ${durationMs}ms.`
+  );
+});

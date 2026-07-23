@@ -48,10 +48,21 @@ export class SyncState {
    */
   latestSyncedBlockTime: Date | 'caught-up' | undefined;
 
+  private pendingSyncHeight: number;
+
+  private pendingSyncHeights: Set<number>;
+
+  private additionalSyncedHeightSet: Set<number>;
+
   constructor(initialState: InitialSyncState) {
     this.fullySyncedUpToHeight = initialState.fullySyncedUpToHeight;
     this.pendingSyncOfHeights = initialState.pendingSyncOfHeights.slice();
     this.additionalSyncedHeights = initialState.additionalSyncedHeights.slice();
+    this.pendingSyncHeights = new Set(this.pendingSyncOfHeights);
+    this.additionalSyncedHeightSet = new Set(this.additionalSyncedHeights);
+    this.pendingSyncHeight = this.computePendingSyncHeightFrom(
+      this.fullySyncedUpToHeight
+    );
     this.latestSyncedBlockTime =
       initialState.fullySyncedUpToHeight > 0 ? 'caught-up' : undefined;
   }
@@ -69,28 +80,35 @@ export class SyncState {
 
     if (
       this.fullySyncedUpToHeight < height &&
-      !this.additionalSyncedHeights.includes(height)
+      !this.additionalSyncedHeightSet.has(height)
     ) {
       this.additionalSyncedHeights.push(height);
-      removeValueIfPresent(this.pendingSyncOfHeights, height);
+      this.additionalSyncedHeightSet.add(height);
+      if (this.pendingSyncHeights.delete(height)) {
+        removeValueIfPresent(this.pendingSyncOfHeights, height);
+      }
     }
 
     // eslint-disable-next-line functional/no-let
     let nextHeight = this.fullySyncedUpToHeight + 1;
     // eslint-disable-next-line functional/no-loop-statement
-    while (removeValueIfPresent(this.additionalSyncedHeights, nextHeight)) {
+    while (this.additionalSyncedHeightSet.delete(nextHeight)) {
+      removeValueIfPresent(this.additionalSyncedHeights, nextHeight);
       this.fullySyncedUpToHeight = nextHeight;
       nextHeight += 1;
     }
+    this.updatePendingSyncHeight();
   }
 
   markHeightAsPendingSync(height: number) {
     if (
       this.fullySyncedUpToHeight < height &&
-      !this.pendingSyncOfHeights.includes(height) &&
-      !this.additionalSyncedHeights.includes(height)
+      !this.pendingSyncHeights.has(height) &&
+      !this.additionalSyncedHeightSet.has(height)
     ) {
       this.pendingSyncOfHeights.push(height);
+      this.pendingSyncHeights.add(height);
+      this.updatePendingSyncHeight();
     }
   }
 
@@ -113,6 +131,9 @@ export class SyncState {
     this.additionalSyncedHeights = this.additionalSyncedHeights.filter(
       (completed) => completed < height
     );
+    this.pendingSyncHeights = new Set(this.pendingSyncOfHeights);
+    this.additionalSyncedHeightSet = new Set(this.additionalSyncedHeights);
+    this.resetPendingSyncHeight();
   }
 
   /**
@@ -120,16 +141,35 @@ export class SyncState {
    * useful for prioritizing syncing.
    */
   getPendingSyncHeight() {
-    const handledHeights = [
-      ...this.pendingSyncOfHeights,
-      ...this.additionalSyncedHeights,
-    ];
+    return this.pendingSyncHeight;
+  }
+
+  private isHeightHandled(height: number) {
+    return (
+      this.pendingSyncHeights.has(height) ||
+      this.additionalSyncedHeightSet.has(height)
+    );
+  }
+
+  private computePendingSyncHeightFrom(height: number) {
     // eslint-disable-next-line functional/no-let
-    let firstUnhandledHeight = this.fullySyncedUpToHeight + 1;
+    let pendingSyncHeight = height;
     // eslint-disable-next-line functional/no-loop-statement
-    while (handledHeights.includes(firstUnhandledHeight)) {
-      firstUnhandledHeight += 1;
+    while (this.isHeightHandled(pendingSyncHeight + 1)) {
+      pendingSyncHeight += 1;
     }
-    return firstUnhandledHeight - 1;
+    return pendingSyncHeight;
+  }
+
+  private updatePendingSyncHeight() {
+    this.pendingSyncHeight = this.computePendingSyncHeightFrom(
+      Math.max(this.pendingSyncHeight, this.fullySyncedUpToHeight)
+    );
+  }
+
+  private resetPendingSyncHeight() {
+    this.pendingSyncHeight = this.computePendingSyncHeightFrom(
+      this.fullySyncedUpToHeight
+    );
   }
 }

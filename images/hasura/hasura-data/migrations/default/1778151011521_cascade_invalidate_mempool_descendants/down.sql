@@ -1,0 +1,2 @@
+DROP TRIGGER IF EXISTS trigger_public_node_transaction_history_insert ON node_transaction_history;
+DROP FUNCTION IF EXISTS trigger_node_transaction_history_insert();

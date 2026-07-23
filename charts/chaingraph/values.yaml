@@ -18,12 +18,15 @@ agent:
   # The maximum number of connections the agent should maintain to the database.
   # For best performance, this should be set to the number of CPUs available to Postgres. If not set, Chaingraph will assume that Postgres is running on hardware equivalent to its own. (This is ideal if Postgres is running on either the same machine or an equivalent one from a homogenous Kubernetes node pool.)
   maxConnections: ''
-# If set to false, the Postgres database will be configured to use "synchronous_commit = off" during initial sync.
-# In real-world testing, this usually reduces the speed of Chaingraph's initial sync, so Chaingraph leaves "synchronous_commit = on" by default.
+  # If set to false, the Postgres database will be configured to use "synchronous_commit = off" during initial sync.
+  # In real-world testing, this usually reduces the speed of Chaingraph's initial sync, so Chaingraph leaves "synchronous_commit = on" by default.
   synchronousCommit: true
   # The target size (in MB) of the buffer which holds downloaded blocks waiting to be saved to the database. This primarily affects memory usage during the initial chain sync.
   # For best performance, this should be around `maxConnections * maximum block size`, while leaving enough memory available to the host machine. If left unset (recommended), Chaingraph will measure free memory at startup and attempt to select a reasonable value.
   blockBufferTargetSizeMb: ''
+  # Self-healing for https://github.com/bitauth/chaingraph/issues/74: after initial sync, the agent scans saved blocks in batches to find blocks whose linked transactions don't match the saved block size, then repairs those blocks by re-requesting them from trusted nodes.
+  # Set to 0 to disable the startup repair task.
+  repairBlocksBatchSize: 10000
   # A mapping of network magic bytes to hex-encoded genesis blocks.
   # Format: `NETWORK_MAGIC:RAW_GENESIS_BLOCK_HEX`, comma separated.
   # E.g. CHAINGRAPH_GENESIS_BLOCKS=e3e1f3e8:rawblockhex,deadbeef:rawblockhex
