@@ -8,6 +8,14 @@ metadata:
     {{- include "chaingraph.labels" . | nindent 4 }}
 spec:
   replicas: 1
+  # The agent is a singleton writer: never run two concurrently. Recreate
+  # terminates the old pod before starting its replacement, at the cost of a
+  # brief indexing gap (the agent catches up on restart).
+  strategy:
+    type: Recreate
+    # Explicit null clears the server-defaulted rollingUpdate block left by
+    # previous RollingUpdate deployments (Helm three-way merge).
+    rollingUpdate: null
   selector:
     matchLabels:
       app: chaingraph-agent
