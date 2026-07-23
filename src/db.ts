@@ -84,14 +84,16 @@ export const blockArrayToHashChain = (
  */
 export const getAllKnownBlockHashes = async () => {
   const client = await pool.connect();
-  const allKnownBlockHashes = await client.query<{ hash: Buffer }>(
-    'SELECT "hash" from "block";'
+  /*
+   * Hex-encoding in Postgres avoids materializing millions of `Buffer`s and
+   * converting each to hex on the (single-threaded) agent event loop, which
+   * dominated startup time on large databases.
+   */
+  const allKnownBlockHashes = await client.query<{ hash: string }>(
+    `SELECT encode("hash", 'hex') AS "hash" from "block";`
   );
   client.release();
-  const hashes = allKnownBlockHashes.rows.map(({ hash }) =>
-    hash.toString('hex')
-  );
-  return hashes;
+  return allKnownBlockHashes.rows.map(({ hash }) => hash);
 };
 
 export interface IncompleteBlock {

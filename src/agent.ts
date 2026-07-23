@@ -361,6 +361,14 @@ export class Agent {
 
   blockDbRestored = false;
 
+  /**
+   * Restoring the block hash set (`SELECT encode("hash", 'hex') FROM block`)
+   * legitimately takes tens of seconds on large databases, so don't warn about
+   * it before this many seconds have elapsed.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-magic-numbers
+  blockDbRestoreWarnDelaySeconds = 15;
+
   successfullyInitialized = false;
 
   /**
@@ -426,10 +434,19 @@ export class Agent {
       targetSize: blockBufferTargetSizeMb * MB,
     });
 
+    const blockDbRestoreStart = Date.now();
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
     getAllKnownBlockHashes().then((hashes) => {
       this.blockDb = new Set(hashes);
       this.blockDbRestored = true;
+      const millisecondsPerSecond = 1000;
+      const restoreSeconds = (
+        (Date.now() - blockDbRestoreStart) /
+        millisecondsPerSecond
+      ).toFixed(1);
+      this.logger.info(
+        `Restored ${hashes.length} known block hashes from the database in ${restoreSeconds} seconds.`
+      );
     });
 
     this.logger.info(
@@ -765,6 +782,29 @@ export class Agent {
    * issue requires that Chaingraph be restarted.
    */
 
+  warnIfInitializationDelayed(uninitializedNodes: string[]) {
+    const second = 1000;
+    const currentDelay = Date.now() - this.startTime.getTime();
+    const currentDelaySecondsRounded = Math.round(currentDelay / second);
+    if (this.warnAfterDelaySecond >= currentDelaySecondsRounded) {
+      return;
+    }
+    this.warnAfterDelaySecond = currentDelaySecondsRounded;
+    if (this.blockDbRestored) {
+      this.logger.warn(
+        `The following nodes are taking longer than ${currentDelaySecondsRounded} seconds to initialize and may be either misconfigured or unresponsive: ${uninitializedNodes.join(
+          ','
+        )}`
+      );
+    } else if (
+      currentDelaySecondsRounded >= this.blockDbRestoreWarnDelaySeconds
+    ) {
+      this.logger.warn(
+        `Still restoring known block hashes from the database (${currentDelaySecondsRounded} seconds elapsed). This can take a minute or more on large databases; if it never completes, check database configuration and connectivity.`
+      );
+    }
+  }
+
   checkInitialization() {
     const uninitializedNodes = Object.entries(this.nodes).reduce<string[]>(
       (nodes, [id, node]) =>
@@ -773,22 +813,7 @@ export class Agent {
     );
     if (uninitializedNodes.length > 0 || !this.blockDbRestored) {
       const second = 1000;
-      const currentDelay = Date.now() - this.startTime.getTime();
-      const currentDelaySecondsRounded = Math.round(currentDelay / second);
-      if (this.warnAfterDelaySecond < currentDelaySecondsRounded) {
-        this.warnAfterDelaySecond = currentDelaySecondsRounded;
-        if (this.blockDbRestored) {
-          this.logger.warn(
-            `The following nodes are taking longer than ${currentDelaySecondsRounded} seconds to initialize and may be either misconfigured or unresponsive: ${uninitializedNodes.join(
-              ','
-            )}`
-          );
-        } else {
-          this.logger.warn(
-            `Could not restore block hashes from the database after ${currentDelaySecondsRounded} seconds. There may be a database configuration or connectivity problem.`
-          );
-        }
-      }
+      this.warnIfInitializationDelayed(uninitializedNodes);
       setTimeout(() => {
         this.scheduleBlockBufferFill();
       }, second);

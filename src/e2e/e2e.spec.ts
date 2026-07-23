@@ -845,6 +845,44 @@ test.serial('[e2e] creates expected indexes after initial sync', async (t) => {
 });
 
 test.serial(
+  '[e2e] getAllKnownBlockHashes returns hex hashes for every known block',
+  async (t) => {
+    const originalPostgresConnectionString =
+      process.env.CHAINGRAPH_POSTGRES_CONNECTION_STRING;
+    process.env.CHAINGRAPH_POSTGRES_CONNECTION_STRING =
+      postgresE2eConnectionStringTestDb;
+    const { getAllKnownBlockHashes } = await import('../db.js');
+    // eslint-disable-next-line functional/no-try-statement
+    try {
+      const hashes = await getAllKnownBlockHashes();
+      /*
+       * Convert client-side (the previous implementation) to verify the
+       * SQL-side `encode(...)` used by `getAllKnownBlockHashes` matches it.
+       */
+      const expected = (
+        await client.query<{ hash: Buffer }>(/* sql */ `
+  SELECT hash FROM block ORDER BY hash;
+  `)
+      ).rows.map((row) => row.hash.toString('hex'));
+      t.true(expected.length > 0);
+      t.deepEqual(
+        [...hashes].sort((a, b) => (a < b ? -1 : Number(a > b))),
+        expected
+      );
+      const hexPattern = /^[0-9a-f]{64}$/u;
+      t.true(hashes.every((hash) => hexPattern.test(hash)));
+    } finally {
+      if (originalPostgresConnectionString === undefined) {
+        delete process.env.CHAINGRAPH_POSTGRES_CONNECTION_STRING;
+      } else {
+        process.env.CHAINGRAPH_POSTGRES_CONNECTION_STRING =
+          originalPostgresConnectionString;
+      }
+    }
+  }
+);
+
+test.serial(
   '[e2e] records node validation after concurrent transaction insert conflict',
   async (t) => {
     const transactionHash = 'c1'.repeat(repeatedHashByteLength);
