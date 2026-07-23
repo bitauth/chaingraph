@@ -149,7 +149,7 @@
     "@chaingraph/bitcore-p2p-cash": "^9.0.5",
     "dotenv": "^16.0.3",
     "lru-cache": "^7.14.1",
-    "pg": "^8.8.0",
+    "pg": "^8.22.0",
     "pino": "^8.8.0"
   },
   "devDependencies": {
@@ -157,7 +157,7 @@
     "@istanbuljs/nyc-config-typescript": "^1.0.2",
     "@types/dotenv": "^8.2.0",
     "@types/lru-cache": "^7.10.10",
-    "@types/pg": "^8.6.6",
+    "@types/pg": "^8.20.0",
     "@typescript-eslint/eslint-plugin": "^5.48.1",
     "@typescript-eslint/parser": "^5.48.1",
     "ava": "^5.1.0",
