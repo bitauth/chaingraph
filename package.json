@@ -142,7 +142,7 @@
     "postinstall": "touch .env"
   },
   "engines": {
-    "node": ">=10"
+    "node": ">=22"
   },
   "dependencies": {
     "@bitauth/libauth": "^2.0.0-alpha.8",
