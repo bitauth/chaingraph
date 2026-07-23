@@ -78,13 +78,17 @@ spec:
           timeoutSeconds: 15
           successThreshold: 1
           failureThreshold: 3
+        # Readiness is tight so rollouts report Ready seconds after the
+        # internal API is up. Liveness (above) stays coarse on purpose: a
+        # CPU-bound catch-up can block the event loop (and /health-check),
+        # and a twitchy liveness probe would kill the agent mid-recovery.
         readinessProbe:
           httpGet:
             path: /health-check
             port: {{ .Values.agent.port }}
-          initialDelaySeconds: 30
-          periodSeconds: 60
-          timeoutSeconds: 15
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
           successThreshold: 1
           failureThreshold: 3
         resources: {}
