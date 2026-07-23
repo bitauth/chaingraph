@@ -361,14 +361,6 @@ export class Agent {
 
   blockDbRestored = false;
 
-  /**
-   * Restoring the block hash set (`SELECT encode("hash", 'hex') FROM block`)
-   * legitimately takes tens of seconds on large databases, so don't warn about
-   * it before this many seconds have elapsed.
-   */
-  // eslint-disable-next-line @typescript-eslint/no-magic-numbers
-  blockDbRestoreWarnDelaySeconds = 15;
-
   successfullyInitialized = false;
 
   /**
@@ -554,6 +546,7 @@ export class Agent {
          */
         peer.sendMessage(new peer.messages.SendHeaders());
 
+        const nodeRegistrationStart = Date.now();
         // eslint-disable-next-line @typescript-eslint/no-floating-promises
         registerTrustedNodeWithDb({
           latestConnectionBeganAt: new Date(),
@@ -576,6 +569,14 @@ export class Agent {
               : syncedHeaderHashChain
           );
           this.nodes[node.name]!.syncState = new SyncState(initialSyncState);
+          const millisecondsPerSecond = 1000;
+          const chainRestoreSeconds = (
+            (Date.now() - nodeRegistrationStart) /
+            millisecondsPerSecond
+          ).toFixed(1);
+          this.logger.info(
+            `${node.name}: chain state registered and restored from the database in ${chainRestoreSeconds} seconds.`
+          );
           const genesisBlockHeaderFromDb = this.blockTree.getBlockHeaderHash(
             node.name,
             0
@@ -790,17 +791,35 @@ export class Agent {
       return;
     }
     this.warnAfterDelaySecond = currentDelaySecondsRounded;
-    if (this.blockDbRestored) {
+    if (!this.blockDbRestored) {
       this.logger.warn(
-        `The following nodes are taking longer than ${currentDelaySecondsRounded} seconds to initialize and may be either misconfigured or unresponsive: ${uninitializedNodes.join(
+        `Still restoring known block hashes from the database (${currentDelaySecondsRounded} seconds elapsed). This can take a minute or more on large databases; if it never completes, check database configuration and connectivity.`
+      );
+      return;
+    }
+    /*
+     * A node whose P2P connection is `ready` is not unresponsive – it is
+     * waiting on its chain state to be registered and restored from the
+     * database, which takes time proportional to the node's chain length.
+     */
+    const unconnectedNodes = uninitializedNodes.filter(
+      (id) => this.nodes[id]!.peer.status !== 'ready'
+    );
+    const restoringChainNodes = uninitializedNodes.filter(
+      (id) => this.nodes[id]!.peer.status === 'ready'
+    );
+    if (unconnectedNodes.length > 0) {
+      this.logger.warn(
+        `The following nodes are taking longer than ${currentDelaySecondsRounded} seconds to connect and may be either misconfigured or unresponsive: ${unconnectedNodes.join(
           ','
         )}`
       );
-    } else if (
-      currentDelaySecondsRounded >= this.blockDbRestoreWarnDelaySeconds
-    ) {
+    }
+    if (restoringChainNodes.length > 0) {
       this.logger.warn(
-        `Still restoring known block hashes from the database (${currentDelaySecondsRounded} seconds elapsed). This can take a minute or more on large databases; if it never completes, check database configuration and connectivity.`
+        `Still restoring chain state from the database for: ${restoringChainNodes.join(
+          ','
+        )} (${currentDelaySecondsRounded} seconds elapsed). Restore time is proportional to each node's chain length.`
       );
     }
   }
